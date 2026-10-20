@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shadowright · Licence Board</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <h1>Shadowright</h1>
+        <p class="tagline">A learner's permit for your wallet agent</p>
+      </div>
+      <div class="controls">
+        <label class="field">
+          <span>Subject</span>
+          <select id="subject"></select>
+        </label>
+        <button id="refresh" type="button">Refresh</button>
+        <button id="restore" type="button" class="primary" title="Rebuild this board in a fresh Walrus Memory client, from Walrus only">
+          Restore from Walrus
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <p id="status" class="status" role="status" aria-live="polite">Loading memories from Walrus Memory…</p>
+
+      <section class="summary" id="summary" aria-label="Summary"></section>
+
+      <section aria-labelledby="licences-title">
+        <h2 id="licences-title">Licences per decision category</h2>
+        <p class="hint">
+          5 memories unlock judging · at least 80% correct over the last 10 grants a licence · one miss while licensed
+          revokes it · 3 correct calls in a row end probation.
+        </p>
+        <div class="cards" id="cards"></div>
+      </section>
+
+      <section aria-labelledby="curve-title">
+        <h2 id="curve-title">Learning curve</h2>
+        <p class="hint">Prediction accuracy as memories accumulate, oldest memory on the left.</p>
+        <figure class="chart" id="curve"></figure>
+      </section>
+
+      <section aria-labelledby="events-title">
+        <h2 id="events-title">Licence events</h2>
+        <ol class="events" id="events"></ol>
+      </section>
+
+      <section aria-labelledby="timeline-title">
+        <h2 id="timeline-title">Memory timeline</h2>
+        <p class="hint">Every episode the agent stored on Walrus Memory: what it predicted, what the user did, and the lesson.</p>
+        <ol class="timeline" id="timeline"></ol>
+        <button id="timeline-toggle" type="button" class="more" hidden></button>
+      </section>
+    </main>
+
+    <footer class="foot">
+      Data: Walrus Memory recall (memories) and Sui mainnet via Tatum (transactions). Read-only: this page never signs or sends anything.
+    </footer>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

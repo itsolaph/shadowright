@@ -31,7 +31,37 @@ describe('classify', () => {
       objectsOut: [],
       objectsIn: [],
     });
-    assert.deepEqual(result, { category: 'swap', rule: 'coin exchange: SUI -> USDC' });
+    assert.deepEqual(result, { category: 'swap', rule: 'coin exchange: SUI -> USDC', venue: undefined });
+  });
+
+  it('names the venue that decided the category, not helper calls around it', () => {
+    const result = classifyFeatures({
+      calls: ['0xpyth::pyth::update_price_feeds', '0xagg::universal_router::build', '0xagg::commission_type::charge'],
+      commands: ['MoveCall', 'MoveCall', 'MoveCall'],
+      eventTypes: [],
+      coinTypesOut: ['0x2::sui::SUI'],
+      coinTypesIn: ['0x11::usdc::USDC'],
+      objectsOut: [],
+      objectsIn: [],
+    });
+    assert.equal(result.category, 'swap');
+    assert.equal(result.venue, '0xagg::universal_router');
+  });
+
+  it('treats NFT marketplace bids as nft, even when the market is named like a trade', () => {
+    const result = classifyFeatures({
+      calls: ['0x63ce::tradeport_biddings::cancel_bid'],
+      commands: ['MoveCall'],
+      eventTypes: [],
+      coinTypesOut: [],
+      coinTypesIn: ['0x2::sui::SUI'],
+      objectsOut: [],
+      objectsIn: [],
+    });
+    assert.deepEqual(
+      [result.category, result.venue],
+      ['nft', '0x63ce::tradeport_biddings'],
+    );
   });
 
   it('falls back to other for unrecognised calls', () => {

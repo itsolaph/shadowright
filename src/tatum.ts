@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CoinMetadata, Page, SuiTransactionBlock, TransactionFilter } from './sui.ts';
+import type {
+  CoinMetadata,
+  CoinObject,
+  EventFilter,
+  EventId,
+  Page,
+  SuiEventEnvelope,
+  SuiTransactionBlock,
+  TransactionFilter,
+} from './sui.ts';
 
 /**
  * Token bucket rate limiter. With `capacity: 1` it degenerates into a strict minimum
@@ -106,6 +115,8 @@ export interface TatumClientOptions {
   maxAttempts?: number;
   /** Base delay of the exponential backoff, in milliseconds. */
   backoffMs?: number;
+  /** Deadline for one HTTP request; a stalled request counts as a retryable network error. */
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
   bucket?: TokenBucket;
   sleep?: (ms: number) => Promise<void>;
@@ -117,6 +128,21 @@ export interface CallOptions {
   /** Skip the cache entirely for this call (for live values such as the latest checkpoint). */
   noCache?: boolean;
 }
+
+export interface QueryOptions extends CallOptions {
+  /** Newest first instead of oldest first. */
+  descending?: boolean;
+  /** Return only digests, without transaction details. */
+  digestsOnly?: boolean;
+}
+
+const FULL_TRANSACTION = {
+  showInput: true,
+  showEffects: true,
+  showEvents: true,
+  showBalanceChanges: true,
+  showObjectChanges: true,
+};
 
 export interface UsageStats {
   networkCalls: number;
@@ -141,6 +167,7 @@ export class TatumSuiClient {
   private readonly bucket: TokenBucket;
   private readonly maxAttempts: number;
   private readonly backoffMs: number;
+  private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private nextId = 1;
@@ -152,6 +179,7 @@ export class TatumSuiClient {
     this.bucket = options.bucket ?? new TokenBucket(options.ratePerSecond ?? 2.5);
     this.maxAttempts = options.maxAttempts ?? 5;
     this.backoffMs = options.backoffMs ?? 500;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.sleep = options.sleep ?? delay;
   }
@@ -173,29 +201,52 @@ export class TatumSuiClient {
     return result;
   }
 
+  /**
+   * Oldest first by default: every full page is then stable, so only the open last page is
+   * ever refetched. `descending` reads the newest transactions first (used to sample recent
+   * activity); `digestsOnly` returns digests without details (used to detect new activity).
+   */
   queryTransactionBlocks(
     filter: TransactionFilter,
     cursor: string | null,
     limit = 50,
-    options: CallOptions = {},
+    options: QueryOptions = {},
   ): Promise<Page<SuiTransactionBlock>> {
-    const responseOptions = {
-      showInput: true,
-      showEffects: true,
-      showEvents: true,
-      showBalanceChanges: true,
-      showObjectChanges: true,
-    };
-    // Ascending order keeps every full page stable, so only the open last page is ever refetched.
-    return this.call('suix_queryTransactionBlocks', [{ filter, options: responseOptions }, cursor, limit, false], options);
+    const responseOptions = options.digestsOnly ? {} : FULL_TRANSACTION;
+    return this.call(
+      'suix_queryTransactionBlocks',
+      [{ filter, options: responseOptions }, cursor, limit, options.descending ?? false],
+      options,
+    );
+  }
+
+  multiGetTransactionBlocks(digests: string[], options: CallOptions = {}): Promise<SuiTransactionBlock[]> {
+    return this.call('sui_multiGetTransactionBlocks', [digests, FULL_TRANSACTION], options);
+  }
+
+  queryEvents(filter: EventFilter, cursor: EventId | null, limit = 50, options: QueryOptions = {}): Promise<Page<SuiEventEnvelope, EventId>> {
+    return this.call('suix_queryEvents', [filter, cursor, limit, options.descending ?? false], options);
   }
 
   getCoinMetadata(coinType: string): Promise<CoinMetadata | null> {
     return this.call('suix_getCoinMetadata', [coinType]);
   }
 
+  getCoins(owner: string, coinType: string, limit = 10): Promise<Page<CoinObject>> {
+    return this.call('suix_getCoins', [owner, coinType, null, limit], { noCache: true });
+  }
+
+  getReferenceGasPrice(): Promise<string> {
+    return this.call('suix_getReferenceGasPrice', [], { noCache: true });
+  }
+
   getLatestCheckpoint(): Promise<string> {
     return this.call('sui_getLatestCheckpointSequenceNumber', [], { noCache: true });
+  }
+
+  /** Credits spent by this client instance so far (cache hits are free). */
+  get creditsUsed(): number {
+    return this.stats.networkCalls * CREDITS_PER_CALL;
   }
 
   /** Simulates a transaction without executing it. Used before a licensed agent acts. */
@@ -218,6 +269,7 @@ export class TatumSuiClient {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-api-key': this.apiKey },
           body,
+          signal: AbortSignal.timeout(this.timeoutMs),
         });
       } catch (error) {
         lastError = new RpcError(`${method}: network error (${(error as Error).message})`);

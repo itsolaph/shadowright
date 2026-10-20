@@ -37,6 +37,8 @@ export interface Decision {
   category: Category;
   /** Which classifier rule fired, for explainability. */
   rule: string;
+  /** `package::module` that decided the category (the protocol used), when a call decided it. */
+  venue?: string;
   /** Other addresses whose balances moved, or that received objects. */
   counterparties: string[];
   coinsOut: CoinFlow[];

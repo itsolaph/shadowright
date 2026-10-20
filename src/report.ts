@@ -1,6 +1,9 @@
-import { describeAction, timeContext } from './action.ts';
+import { describeAction, shortId, timeContext } from './action.ts';
 import { accuracyOf, type LicenceBoard, type LicenceEvent } from './licence.ts';
 import type { ReplayStep } from './replay.ts';
+import type { ScoutCandidate } from './scout.ts';
+import { shortAddress } from './subjects.ts';
+import type { StandingPrediction, WatchStep } from './watch.ts';
 import { CATEGORIES, CATEGORY_LABELS, type Category } from './types.ts';
 
 const STATE_ICON = { LOCKED: '🔒', SHADOWING: '👀', LICENSED: '✅' } as const;
@@ -40,6 +43,24 @@ export function renderStep(step: ReplayStep, total: number): string {
   return lines.join('\n');
 }
 
+export function renderStanding(standing: StandingPrediction): string {
+  const { prediction, predictedAtMs } = standing;
+  return `⏳ ${timeContext(predictedAtMs).iso} UTC standing prediction: ${describeAction(prediction.action)} (confidence ${pct(prediction.confidence)}); no new transaction yet`;
+}
+
+export function renderWatchStep(step: WatchStep): string {
+  const { decision, standing, record } = step;
+  const verdict = record.correct ? '✓ correct' : `✗ wrong (${record.misses.join(', ')})`;
+  const lines = [
+    `● ${timeContext(decision.timestampMs).iso} UTC new transaction ${shortId(decision.digest)}`,
+    `   predicted at ${timeContext(standing.predictedAtMs).iso} UTC, before reading it: ${describeAction(standing.prediction.action)}`,
+    `   actual : ${describeAction(record.actual)}  [${decision.rule}]`,
+    `   ${verdict}   stored on Walrus: blob ${step.stored.blobId}`,
+    ...step.events.map((event) => `   ${renderEvent(event)}`),
+  ];
+  return lines.join('\n');
+}
+
 export function renderEvent(event: LicenceEvent): string {
   return `licence ${event.category}: ${event.from} -> ${event.to} (${event.reason})`;
 }
@@ -49,6 +70,23 @@ export function renderCounts(counts: Map<Category, { own: number; incoming: numb
     const c = counts.get(category) ?? { own: 0, incoming: 0 };
     return `${CATEGORY_LABELS[category].padEnd(24)}${String(c.own).padStart(6)} own${String(c.incoming).padStart(6)} incoming`;
   }).join('\n');
+}
+
+export function renderScoutCandidate(rank: number, candidate: ScoutCandidate): string {
+  const { profile } = candidate;
+  const counts = CATEGORIES.filter((c) => profile.counts[c] > 0)
+    .map((c) => `${c} ${profile.counts[c]}`)
+    .join(', ');
+  const span = profile.transactions ? `${day(profile.firstMs)} to ${day(profile.lastMs)} (${profile.spanDays.toFixed(0)} days)` : '-';
+  return [
+    `${rank}. ${shortAddress(profile.address)}…  score ${candidate.score}  ${candidate.reason ? `✗ ${candidate.reason}` : '✓ meets every criterion'}`,
+    `   ${profile.transactions} own tx, ${span}, peak ${profile.peakPerDay}/day, seen in: ${candidate.sources.join(', ')}`,
+    `   ${counts || 'no categories'}`,
+  ].join('\n');
+}
+
+function day(timestampMs: number): string {
+  return new Date(timestampMs).toISOString().slice(0, 10);
 }
 
 function pct(value: number): string {

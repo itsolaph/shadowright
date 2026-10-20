@@ -16,11 +16,15 @@ export function actionOf(decision: Decision): Action {
   };
 }
 
-/** Recipient for transfers, otherwise the first non-framework `package::module` called. */
+/**
+ * Recipient for transfers; otherwise the venue that decided the category, falling back to
+ * the first non-framework `package::module` called.
+ */
 function targetOf(decision: Decision): string {
   if (decision.category === 'transfer' || decision.calls.length === 0) {
     return decision.counterparties[0] ?? NONE;
   }
+  if (decision.venue) return decision.venue;
   const venue = decision.modules.find((module) => !FRAMEWORK_PACKAGES.has(module.split('::')[0] ?? ''));
   return venue ?? decision.modules[0] ?? NONE;
 }
@@ -67,6 +71,21 @@ export function describeAction(action: Action): string {
 /** `0x1234…abcd::module` style shortening for display. Never used for comparisons. */
 export function shortId(id: string): string {
   return id.replace(/0x([0-9a-f]{10,})/gi, (_, hex: string) => `0x${hex.slice(0, 4)}…${hex.slice(-4)}`);
+}
+
+/** Decisions less than an hour apart belong to the same session (claim, then swap, then send). */
+export const SESSION_GAP_MS = 60 * 60 * 1000;
+
+/** True when the decision starts a new session; undefined when the gap is unknown. */
+export function isNewSession(sinceMs: number | undefined): boolean | undefined {
+  return sinceMs === undefined ? undefined : sinceMs >= SESSION_GAP_MS;
+}
+
+/** "2 minutes", "5 hours", "4 days". */
+export function describeGap(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  const [value, unit] = minutes < 90 ? [minutes, 'minute'] : minutes < 36 * 60 ? [Math.round(minutes / 60), 'hour'] : [Math.round(minutes / 1440), 'day'];
+  return `${value} ${unit}${value === 1 ? '' : 's'}`;
 }
 
 export type Daypart = 'night' | 'morning' | 'afternoon' | 'evening';

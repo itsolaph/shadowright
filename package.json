@@ -10,6 +10,7 @@
   },
   "scripts": {
     "cli": "node --env-file-if-exists=.env src/cli.ts",
+    "web": "node --env-file-if-exists=.env src/web.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },

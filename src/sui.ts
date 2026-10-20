@@ -84,9 +84,9 @@ export interface SuiTransactionBlock {
   objectChanges?: ObjectChange[];
 }
 
-export interface Page<T> {
+export interface Page<T, Cursor = string> {
   data: T[];
-  nextCursor: string | null;
+  nextCursor: Cursor | null;
   hasNextPage: boolean;
 }
 
@@ -97,6 +97,26 @@ export interface CoinMetadata {
 }
 
 export type TransactionFilter = { FromAddress: string } | { ToAddress: string };
+
+export type EventFilter = { MoveEventType: string } | { MoveModule: { package: string; module: string } };
+
+export interface EventId {
+  txDigest: string;
+  eventSeq: string;
+}
+
+export interface SuiEventEnvelope extends SuiEvent {
+  id: EventId;
+  timestampMs?: string;
+}
+
+export interface CoinObject {
+  coinType: string;
+  coinObjectId: string;
+  version: string;
+  digest: string;
+  balance: string;
+}
 
 export function isMoveCall(command: PtbCommand): command is MoveCallCommand {
   return typeof command === 'object' && command !== null && 'MoveCall' in command;

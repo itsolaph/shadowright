@@ -1,4 +1,4 @@
-import { actionKey, describeAction, timeContext } from './action.ts';
+import { actionKey, describeAction, describeGap, isNewSession, timeContext } from './action.ts';
 import type { RecalledRecord } from './memory.ts';
 import type { Action, Category } from './types.ts';
 
@@ -9,27 +9,88 @@ export interface PredictionContext {
   after: Category | 'none';
   /** The user's previous decision, observable on chain right now. */
   previous?: Action;
+  /** Time since the previous decision. */
+  sinceMs?: number;
   /** Memories recalled from Walrus Memory for this context, written strictly before `timestampMs`. */
   recalled: RecalledRecord[];
 }
 
 export interface Prediction {
   action: Action;
-  /** Share of the supporting evidence behind the chosen action, 0..1. */
+  /** Share of the supporting evidence behind the chosen action, 0..1 (low when evidence is thin). */
   confidence: number;
   /** Human-readable explanation, most important first. */
   reasons: string[];
 }
 
 /**
- * A predictor guesses the user's next action. The heuristic below is transparent and
- * deterministic; an LLM-backed predictor can implement the same interface later and be
- * swapped in by name without touching the replay loop or the licence logic.
+ * A predictor guesses the user's next action from recalled memories. Predictors are swapped
+ * in by name without touching the replay loop or the licence logic; an LLM-backed predictor
+ * can implement the same interface.
  */
 export interface Predictor {
   readonly name: string;
   predict(context: PredictionContext): Promise<Prediction>;
 }
+
+interface Candidate {
+  action: Action;
+  score: number;
+  support: Array<{ weight: number; note: string; bucket: string }>;
+  penalties: Array<{ weight: number; note: string }>;
+}
+
+/** Weighted votes for actions: memories support what the user did and count against past mistakes. */
+class Tally {
+  private readonly candidates = new Map<string, Candidate>();
+
+  support(action: Action, weight: number, note: string): void {
+    const candidate = this.candidateFor(action);
+    candidate.score += weight;
+    candidate.support.push({ weight, note, bucket: action.amountBucket });
+  }
+
+  penalise(action: Action, weight: number, note: string): void {
+    const candidate = this.candidateFor(action);
+    candidate.score -= weight;
+    candidate.penalties.push({ weight, note });
+  }
+
+  /** The best-supported action, or undefined when nothing has positive support. */
+  verdict(): Prediction | undefined {
+    const ranked = [...this.candidates.values()].sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    if (!best || best.score <= 0) return undefined;
+    // Share of the evidence, where less than one full memory's worth of evidence counts as one:
+    // a lone weak hint (such as "repeat the previous decision") is not 100% certain.
+    const totalSupport = ranked.reduce((sum, c) => sum + Math.max(0, c.score), 0);
+    return {
+      action: { ...best.action, amountBucket: likeliestBucket(best) },
+      confidence: best.score / Math.max(totalSupport, 1),
+      reasons: [...lessonsApplied(ranked, best), ...topNotes(best)],
+    };
+  }
+
+  private candidateFor(action: Action): Candidate {
+    const key = actionKey(action);
+    let candidate = this.candidates.get(key);
+    if (!candidate) {
+      candidate = { action, score: 0, support: [], penalties: [] };
+      this.candidates.set(key, candidate);
+    }
+    return candidate;
+  }
+}
+
+/** Fallback when there is nothing to learn from yet. */
+const COLD_START: Action = { category: 'transfer', target: '-', coin: 'SUI', amountBucket: '-' };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function coldStart(): Prediction {
+  return { action: COLD_START, confidence: 0, reasons: ['cold start: no usable memories for this context yet'] };
+}
+
+const tagOf = (recalled: RecalledRecord) => `memory ${recalled.record.digest.slice(0, 6)}`;
 
 export interface HeuristicWeights {
   /** Multiplier bonus when a memory happened in the same part of the day. */
@@ -53,22 +114,10 @@ export const DEFAULT_WEIGHTS: HeuristicWeights = {
   recencyHalfLifeDays: 30,
 };
 
-interface Candidate {
-  action: Action;
-  score: number;
-  support: Array<{ weight: number; note: string; bucket: string }>;
-  penalties: Array<{ weight: number; note: string }>;
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Fallback when there is nothing to learn from yet. */
-const COLD_START: Action = { category: 'transfer', target: '-', coin: 'SUI', amountBucket: '-' };
-
 /**
- * Scores every action seen in recalled memories. Each memory votes for what the user
- * actually did, weighted by semantic similarity, recency and matching context; a memory
- * where the agent was wrong also votes against what the agent predicted back then.
+ * Milestone 1 predictor, kept as the baseline. Each memory votes for what the user actually
+ * did, weighted by semantic similarity, age in days and matching time of day; a memory where
+ * the agent was wrong also votes against what the agent predicted back then.
  */
 export class HeuristicPredictor implements Predictor {
   readonly name = 'heuristic-v1';
@@ -79,19 +128,10 @@ export class HeuristicPredictor implements Predictor {
   }
 
   async predict(context: PredictionContext): Promise<Prediction> {
-    const candidates = new Map<string, Candidate>();
-    const candidateFor = (action: Action): Candidate => {
-      const key = actionKey(action);
-      let candidate = candidates.get(key);
-      if (!candidate) {
-        candidate = { action, score: 0, support: [], penalties: [] };
-        candidates.set(key, candidate);
-      }
-      return candidate;
-    };
-
+    const tally = new Tally();
     const now = timeContext(context.timestampMs);
-    for (const { record, distance } of context.recalled) {
+    for (const recalled of context.recalled) {
+      const { record, distance } = recalled;
       const then = timeContext(record.timestampMs);
       const similarity = Math.min(1, Math.max(0.05, 1 - distance));
       const ageDays = Math.max(0, context.timestampMs - record.timestampMs) / DAY_MS;
@@ -106,53 +146,98 @@ export class HeuristicPredictor implements Predictor {
       const matches = matched.map(([, , label]) => label);
       const weight = similarity * recency * bonus;
       const when = `${then.weekday} ${then.daypart}`;
-      const tag = `memory ${record.digest.slice(0, 6)}`;
 
-      const support = candidateFor(record.actual);
-      support.score += weight;
-      support.support.push({
-        weight,
-        bucket: record.actual.amountBucket,
-        note: `${tag}: user did ${describeAction(record.actual)} (${when}${matches.length ? `; ${matches.join(', ')}` : ''})`,
-      });
-
+      tally.support(record.actual, weight, `${tagOf(recalled)}: user did ${describeAction(record.actual)} (${when}${matches.length ? `; ${matches.join(', ')}` : ''})`);
       if (!record.correct) {
-        const penalty = weight * this.weights.mistakePenalty;
-        const mistaken = candidateFor(record.predicted);
-        mistaken.score -= penalty;
-        mistaken.penalties.push({
-          weight: penalty,
-          note: `${tag}: I wrongly predicted ${describeAction(record.predicted)} there (${when})`,
-        });
+        tally.penalise(record.predicted, weight * this.weights.mistakePenalty, `${tagOf(recalled)}: I wrongly predicted ${describeAction(record.predicted)} there (${when})`);
       }
     }
-
     if (context.previous) {
-      const repeat = candidateFor(context.previous);
-      repeat.score += this.weights.repeatPrevious;
-      repeat.support.push({
-        weight: this.weights.repeatPrevious,
-        bucket: context.previous.amountBucket,
-        note: `previous decision was ${describeAction(context.previous)}`,
-      });
+      tally.support(context.previous, this.weights.repeatPrevious, `previous decision was ${describeAction(context.previous)}`);
+    }
+    return tally.verdict() ?? coldStart();
+  }
+}
+
+export interface HabitWeights {
+  /** Weight of a memory that followed exactly the same previous action (a habit: claim, then stake). */
+  sameAction: number;
+  /** ... that followed only the same kind of previous action. */
+  sameCategory: number;
+  /** ... that shares no previous-decision context (weak evidence of overall habits). */
+  otherContext: number;
+  /** Multiplier when the memory, like now, started a new session (or, like now, continued one). */
+  sameSession: number;
+  /** Within each of those groups, every newer memory halves an older one's weight per this many. */
+  recencyHalfLife: number;
+  /** Share of a memory's weight subtracted from the action it wrongly predicted. */
+  mistakePenalty: number;
+  /** Evidence for repeating the previous decision when no memory says anything better. */
+  repeatPrevious: number;
+}
+
+export const HABIT_WEIGHTS: HabitWeights = {
+  sameAction: 1,
+  sameCategory: 0.35,
+  otherContext: 0.05,
+  sameSession: 1.5,
+  recencyHalfLife: 2,
+  mistakePenalty: 0.6,
+  repeatPrevious: 0.02,
+};
+
+type Tier = 'sameAction' | 'sameCategory' | 'otherContext';
+
+/**
+ * Milestone 2 predictor. Learns sequences ("after claiming vSUI the user redeems it, then
+ * sends SUI to the same address") from recalled memories, which store the previous action
+ * and how long before it happened:
+ * - memories that followed the same previous action count most, the same kind of action less;
+ * - memories from the same session state (a new session after a break, or mid-session) count more;
+ * - newer memories outweigh older ones of the same group, so changed habits take over quickly;
+ * - memories of past mistakes vote against the action that was wrongly predicted.
+ */
+export class HabitPredictor implements Predictor {
+  readonly name = 'habit-v2';
+  private readonly weights: HabitWeights;
+
+  constructor(weights: Partial<HabitWeights> = {}) {
+    this.weights = { ...HABIT_WEIGHTS, ...weights };
+  }
+
+  async predict(context: PredictionContext): Promise<Prediction> {
+    const tally = new Tally();
+    const newSession = isNewSession(context.sinceMs);
+    const byTier = new Map<Tier, RecalledRecord[]>();
+    for (const recalled of context.recalled) {
+      const tier = this.tierOf(recalled, context);
+      byTier.set(tier, [...(byTier.get(tier) ?? []), recalled]);
     }
 
-    const ranked = [...candidates.values()].sort((a, b) => b.score - a.score);
-    const best = ranked[0];
-    if (!best || best.score <= 0) {
-      return {
-        action: COLD_START,
-        confidence: 0,
-        reasons: ['cold start: no usable memories for this context yet'],
-      };
+    for (const [tier, group] of byTier) {
+      const newestFirst = [...group].sort((a, b) => b.record.timestampMs - a.record.timestampMs);
+      for (const [rank, recalled] of newestFirst.entries()) {
+        const { record } = recalled;
+        const sessionMatch = newSession !== undefined && isNewSession(record.sinceMs) === newSession;
+        const weight = this.weights[tier] * 0.5 ** (rank / this.weights.recencyHalfLife) * (sessionMatch ? this.weights.sameSession : 1);
+        const after = record.previous ? `after ${describeAction(record.previous)}` : `after a ${record.after}`;
+        const gap = record.sinceMs === undefined ? '' : `, ${describeGap(record.sinceMs)} later`;
+        tally.support(record.actual, weight, `${tagOf(recalled)}: ${after}${gap}, the user did ${describeAction(record.actual)}`);
+        if (!record.correct) {
+          tally.penalise(record.predicted, weight * this.weights.mistakePenalty, `${tagOf(recalled)}: ${after} I wrongly predicted ${describeAction(record.predicted)}`);
+        }
+      }
     }
+    if (context.previous) {
+      tally.support(context.previous, this.weights.repeatPrevious, `previous decision was ${describeAction(context.previous)}`);
+    }
+    return tally.verdict() ?? coldStart();
+  }
 
-    const totalSupport = ranked.reduce((sum, c) => sum + Math.max(0, c.score), 0);
-    return {
-      action: { ...best.action, amountBucket: likeliestBucket(best) },
-      confidence: totalSupport > 0 ? best.score / totalSupport : 0,
-      reasons: [...lessonsApplied(ranked, best), ...topNotes(best)],
-    };
+  private tierOf({ record }: RecalledRecord, context: PredictionContext): Tier {
+    if (record.previous && context.previous && actionKey(record.previous) === actionKey(context.previous)) return 'sameAction';
+    if (context.after !== 'none' && record.after === context.after) return 'sameCategory';
+    return 'otherContext';
   }
 }
 
@@ -178,10 +263,13 @@ function lessonsApplied(ranked: Candidate[], best: Candidate): string[] {
 }
 
 const PREDICTORS: Record<string, () => Predictor> = {
+  habit: () => new HabitPredictor(),
   heuristic: () => new HeuristicPredictor(),
 };
 
-export function createPredictor(name = 'heuristic'): Predictor {
+export const DEFAULT_PREDICTOR = 'habit';
+
+export function createPredictor(name = DEFAULT_PREDICTOR): Predictor {
   const factory = PREDICTORS[name];
   if (!factory) throw new Error(`Unknown predictor "${name}". Available: ${Object.keys(PREDICTORS).join(', ')}`);
   return factory();

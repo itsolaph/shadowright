@@ -1,6 +1,6 @@
 import { actionOf, compareActions } from './action.ts';
 import { applyRecord, computeBoard, DEFAULT_LICENCE_POLICY, mayActAlone, type LicenceBoard, type LicenceEvent, type LicencePolicy } from './licence.ts';
-import { contextQuery, type MemoryRecord, type ShadowMemory, type StoredMemory } from './memory.ts';
+import { contextQuery, type MemoryRecord, type RecalledRecord, type ShadowMemory, type StoredMemory } from './memory.ts';
 import type { Prediction, Predictor } from './predictor.ts';
 import type { Decision } from './types.ts';
 
@@ -60,43 +60,26 @@ export async function replay(options: ReplayOptions): Promise<ReplayResult> {
     if (options.skip?.(decision)) continue;
 
     const previous = ownDecisions[position - 1];
-    const after = previous?.category ?? 'none';
-    const recalled = (await options.memory.recall(contextQuery(decision.timestampMs, after), options.recallLimit ?? 10))
-      // Never let the agent peek at memories from the future (possible when re-running a replay).
-      .filter(({ record }) => record.timestampMs < decision.timestampMs && record.digest !== decision.digest);
-
-    const prediction = await options.predictor.predict({
+    const { prediction, recalled } = await predictNext(options.memory, options.predictor, {
       timestampMs: decision.timestampMs,
-      after,
-      previous: previous ? actionOf(previous) : undefined,
-      recalled,
+      previous,
+      recallLimit: options.recallLimit,
     });
-    const actual = actionOf(decision);
-    const { correct: isCorrect, misses } = compareActions(prediction.action, actual);
-    const record: MemoryRecord = {
-      digest: decision.digest,
-      timestampMs: decision.timestampMs,
-      after,
-      predicted: prediction.action,
-      actual,
-      correct: isCorrect,
-      misses,
-      predictor: options.predictor.name,
-    };
+    const record = judge(prediction, decision, previous, options.predictor.name);
 
     const wouldActAlone = mayActAlone(board, prediction.action.category);
     const stored = await options.memory.remember(record);
     const applied = applyRecord(board, record, policy);
     board = applied.board;
     events = [...events, ...applied.events];
-    if (isCorrect) correct += 1;
+    if (record.correct) correct += 1;
 
     const step: ReplayStep = {
       index: steps.length + 1,
       decision,
       prediction,
       record,
-      recalled: recalled.length,
+      recalled,
       wouldActAlone,
       stored,
       board,
@@ -108,4 +91,72 @@ export async function replay(options: ReplayOptions): Promise<ReplayResult> {
   }
 
   return { steps, board, events, correct };
+}
+
+export interface NextContext {
+  /** The moment of the prediction: when the user is about to act. */
+  timestampMs: number;
+  /** The user's latest decision so far, if any. */
+  previous: Decision | undefined;
+  recallLimit?: number;
+}
+
+/**
+ * Recalls memories of similar moments and predicts the user's next action. Sees nothing of
+ * the decision being predicted: only the time, the previous decision and past memories.
+ * Two recalls with the same query: the most similar memories, and the most recent similar
+ * ones, so a habit that changed lately is not outvoted by older ones.
+ */
+export async function predictNext(
+  memory: ShadowMemory,
+  predictor: Predictor,
+  context: NextContext,
+): Promise<{ prediction: Prediction; recalled: number }> {
+  const { previous, timestampMs } = context;
+  const situation = {
+    after: previous?.category ?? 'none',
+    previous: previous ? actionOf(previous) : undefined,
+    sinceMs: previous ? timestampMs - previous.timestampMs : undefined,
+  } as const;
+  const query = contextQuery(timestampMs, situation);
+  const limit = context.recallLimit ?? 10;
+  const [similar, recent] = await Promise.all([memory.recall(query, limit), memory.recall(query, limit, 'recent')]);
+  const recalled = uniqueByDigest([...similar, ...recent])
+    // Never let the agent peek at memories from the future (possible when re-running a replay).
+    .filter(({ record }) => record.timestampMs < timestampMs);
+  const prediction = await predictor.predict({ timestampMs, ...situation, recalled });
+  return { prediction, recalled: recalled.length };
+}
+
+function uniqueByDigest(recalled: RecalledRecord[]): RecalledRecord[] {
+  const byDigest = new Map<string, RecalledRecord>();
+  for (const hit of recalled) {
+    const seen = byDigest.get(hit.record.digest);
+    if (!seen || hit.distance < seen.distance) byDigest.set(hit.record.digest, hit);
+  }
+  return [...byDigest.values()];
+}
+
+/** Compares a prediction with what the user actually did, as a memory record. */
+export function judge(
+  prediction: Prediction,
+  decision: Decision,
+  previous: Decision | undefined,
+  predictorName: string,
+  predictedAtMs?: number,
+): MemoryRecord {
+  const actual = actionOf(decision);
+  const { correct, misses } = compareActions(prediction.action, actual);
+  return {
+    digest: decision.digest,
+    timestampMs: decision.timestampMs,
+    after: previous?.category ?? 'none',
+    ...(previous ? { previous: actionOf(previous), sinceMs: decision.timestampMs - previous.timestampMs } : {}),
+    predicted: prediction.action,
+    actual,
+    correct,
+    misses,
+    predictor: predictorName,
+    ...(predictedAtMs === undefined ? {} : { predictedAtMs }),
+  };
 }

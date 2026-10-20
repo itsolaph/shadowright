@@ -27,6 +27,11 @@ export interface TxFeatures {
 export interface Classification {
   category: Category;
   rule: string;
+  /**
+   * `package::module` of the call or event that decided the category: the protocol the user
+   * actually used, rather than helper calls around it (price-oracle updates, fee modules).
+   */
+  venue: string | undefined;
 }
 
 interface Rule {
@@ -37,9 +42,9 @@ interface Rule {
 
 const STAKE_CALL = /(^0x3::sui_system::)|stak/i;
 const CLAIM_CALL = /claim|harvest|reward|airdrop|collect_fee|redeem_reward/i;
-const SWAP_CALL = /swap|router|aggregat|trade|flash_swap|exchange/i;
+const SWAP_CALL = /swap|router|aggregat|::trade|flash_swap|exchange/i;
 const SWAP_EVENT = /swap/i;
-const NFT_CALL = /(^0x2::kiosk)|kiosk|nft|transfer_policy|collectible|marketplace|launchpad/i;
+const NFT_CALL = /(^0x2::kiosk)|kiosk|nft|transfer_policy|collectible|marketplace|launchpad|tradeport|bidding/i;
 const DEFI_CALL = /deposit|withdraw|supply|borrow|repay|lend|liquidity|mint_position|position|vault|farm|pool/i;
 const TRANSFER_COMMANDS = new Set(['SplitCoins', 'MergeCoins', 'TransferObjects']);
 const TRANSFER_CALL = /^0x2::(pay|transfer|coin)::/;
@@ -50,17 +55,17 @@ function firstMatch(values: string[], pattern: RegExp): string | undefined {
 
 /**
  * Rules in priority order. The first rule that returns a reason wins, so more specific
- * intents (staking, claiming) are checked before broader ones (swap, DeFi, transfer).
+ * intents (staking, claiming, NFT markets) are checked before broader ones (swap, DeFi, transfer).
  */
 const RULES: Rule[] = [
   { category: 'stake', name: 'stake call', test: (f) => firstMatch(f.calls, STAKE_CALL) },
   { category: 'claim', name: 'claim call', test: (f) => firstMatch(f.calls, CLAIM_CALL) },
+  { category: 'nft', name: 'nft call', test: (f) => firstMatch(f.calls, NFT_CALL) },
   {
     category: 'swap',
     name: 'swap call',
     test: (f) => firstMatch(f.calls, SWAP_CALL) ?? firstMatch(f.eventTypes, SWAP_EVENT),
   },
-  { category: 'nft', name: 'nft call', test: (f) => firstMatch(f.calls, NFT_CALL) },
   { category: 'defi', name: 'defi call', test: (f) => firstMatch(f.calls, DEFI_CALL) },
   {
     category: 'swap',
@@ -90,10 +95,16 @@ const RULES: Rule[] = [
 export function classifyFeatures(features: TxFeatures): Classification {
   for (const rule of RULES) {
     const evidence = rule.test(features);
-    if (evidence) return { category: rule.category, rule: `${rule.name}: ${evidence}` };
+    if (evidence) return { category: rule.category, rule: `${rule.name}: ${evidence}`, venue: venueOf(evidence) };
   }
   const evidence = features.calls[0] ?? features.commands.join('+');
-  return { category: 'other', rule: `fallback: ${evidence || 'no commands'}` };
+  return { category: 'other', rule: `fallback: ${evidence || 'no commands'}`, venue: undefined };
+}
+
+/** `package::module` of a Move call or event type (`0xabc::pool::swap` -> `0xabc::pool`), if it is one. */
+function venueOf(evidence: string): string | undefined {
+  const [pkg, module] = evidence.split('<')[0]?.split('::') ?? [];
+  return pkg?.startsWith('0x') && module ? `${shortPackageId(pkg)}::${module}` : undefined;
 }
 
 export function classify(tx: SuiTransactionBlock, wallet: string): Classification {

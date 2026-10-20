@@ -6,7 +6,10 @@ export interface Config {
   memwalKey: string | undefined;
   memwalAccountId: string | undefined;
   memwalServerUrl: string;
-  namespace: string;
+  /** Prefix of every subject's Walrus Memory namespace: `<base>:<short address>`. */
+  namespaceBase: string;
+  /** Namespace override for `SHADOWRIGHT_WALLET` (default: the bare base, as in milestone 1). */
+  walletNamespace: string | undefined;
   wallet: string | undefined;
   dataDir: string;
   licence: LicencePolicy;
@@ -19,7 +22,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     memwalKey: env.MEMWAL_PRIVATE_KEY || undefined,
     memwalAccountId: env.MEMWAL_ACCOUNT_ID || undefined,
     memwalServerUrl: env.MEMWAL_SERVER_URL || 'https://relayer.memory.walrus.xyz',
-    namespace: env.SHADOWRIGHT_NAMESPACE || 'shadowright-v1',
+    namespaceBase: 'shadowright-v1',
+    walletNamespace: env.SHADOWRIGHT_NAMESPACE || undefined,
     wallet: env.SHADOWRIGHT_WALLET || undefined,
     dataDir: env.SHADOWRIGHT_DATA_DIR || 'data',
     licence: DEFAULT_LICENCE_POLICY,
