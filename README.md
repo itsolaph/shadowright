@@ -18,6 +18,8 @@ but only after a dry run, and it never signs. One wrong call revokes the licence
 *The Licence Board on a real public mainnet wallet (address masked): 80 memories on Walrus,
 39% overall accuracy, stake / unstake licensed, everything else still shadowing.*
 
+**Demo video (2:46):** https://youtu.be/kr0DQE7RSKQ · **Write-up:** [docs/BLOG.md](docs/BLOG.md)
+
 ## The loop
 
 ```mermaid

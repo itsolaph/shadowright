@@ -138,6 +138,6 @@ yet, the agent says it would ask the user to sign.
 - Portable permits: the memories live on Walrus, so a new agent could start from what the old one
   learned.
 
-The code is open source under MIT: REPO_URL
+The code is open source under MIT: https://github.com/itsolaph/shadowright
 
-The 2-minute demo video: VIDEO_URL
+The demo video (2:46): https://youtu.be/kr0DQE7RSKQ
