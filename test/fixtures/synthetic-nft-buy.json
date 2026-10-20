@@ -1,0 +1,49 @@
+{
+  "source": "synthetic",
+  "note": "User buys a collectible from a marketplace listing.",
+  "expectedCategory": "nft",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticNftBuy7777777777777777777777777",
+    "timestampMs": "1761300000000",
+    "transaction": {
+      "data": {
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gasData": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [{ "type": "pure", "valueType": "u64", "value": "3000000000" }],
+          "transactions": [
+            { "SplitCoins": ["GasCoin", [{ "Input": 0 }]] },
+            {
+              "MoveCall": {
+                "package": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "module": "marketplace",
+                "function": "buy"
+              }
+            },
+            { "TransferObjects": [[{ "Result": 1 }], { "Input": 0 }] }
+          ]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "1000000", "storageCost": "5000000", "storageRebate": "4000000", "nonRefundableStorageFee": "40000" }
+    },
+    "events": [],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "-3002000000" },
+      { "owner": { "AddressOwner": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, "coinType": "0x2::sui::SUI", "amount": "3000000000" }
+    ],
+    "objectChanges": [
+      {
+        "type": "transferred",
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "recipient": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "objectType": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc::art::Artwork",
+        "objectId": "0x07"
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "source": "synthetic",
+  "note": "User swaps 5 SUI for 17 USDC through a DEX router. Package ids are placeholders.",
+  "expectedCategory": "swap",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticSwap3333333333333333333333333333",
+    "timestampMs": "1760958000000",
+    "transaction": {
+      "data": {
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gasData": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [{ "type": "pure", "valueType": "u64", "value": "5000000000" }],
+          "transactions": [
+            { "SplitCoins": ["GasCoin", [{ "Input": 0 }]] },
+            {
+              "MoveCall": {
+                "package": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "module": "router",
+                "function": "swap_exact_input",
+                "type_arguments": ["0x2::sui::SUI", "0x1111111111111111111111111111111111111111111111111111111111111111::usdc::USDC"]
+              }
+            },
+            { "TransferObjects": [[{ "Result": 1 }], { "Input": 0 }] }
+          ]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "1500000", "storageCost": "3952000", "storageRebate": "2956240", "nonRefundableStorageFee": "29860" }
+    },
+    "events": [
+      { "type": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd::pool::SwapEvent", "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    ],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "-5002495760" },
+      {
+        "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "coinType": "0x1111111111111111111111111111111111111111111111111111111111111111::usdc::USDC",
+        "amount": "17000000"
+      }
+    ],
+    "objectChanges": []
+  }
+}

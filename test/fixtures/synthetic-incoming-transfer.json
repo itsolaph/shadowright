@@ -1,0 +1,37 @@
+{
+  "source": "synthetic",
+  "note": "Another address sends 2 SUI to the wallet. Not the user's own decision.",
+  "expectedCategory": "transfer",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticIncomingTransfer22222222222222222",
+    "timestampMs": "1760954400000",
+    "transaction": {
+      "data": {
+        "sender": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "gasData": { "owner": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [
+            { "type": "pure", "valueType": "u64", "value": "2000000000" },
+            { "type": "pure", "valueType": "address", "value": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+          ],
+          "transactions": [
+            { "SplitCoins": ["GasCoin", [{ "Input": 0 }]] },
+            { "TransferObjects": [[{ "NestedResult": [0, 0] }], { "Input": 1 }] }
+          ]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "750000", "storageCost": "1976000", "storageRebate": "978120", "nonRefundableStorageFee": "9880" }
+    },
+    "events": [],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, "coinType": "0x2::sui::SUI", "amount": "-2001747880" },
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "2000000000" }
+    ],
+    "objectChanges": []
+  }
+}

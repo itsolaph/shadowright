@@ -1,0 +1,38 @@
+{
+  "source": "synthetic",
+  "note": "User calls an unrelated contract (a game move). No coins move besides gas.",
+  "expectedCategory": "other",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticOther999999999999999999999999999",
+    "timestampMs": "1761472800000",
+    "transaction": {
+      "data": {
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gasData": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [],
+          "transactions": [
+            {
+              "MoveCall": {
+                "package": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "module": "game",
+                "function": "play"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "750000", "storageCost": "1000000", "storageRebate": "990000", "nonRefundableStorageFee": "10000" }
+    },
+    "events": [],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "-760000" }
+    ],
+    "objectChanges": []
+  }
+}

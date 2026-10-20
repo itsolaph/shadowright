@@ -1,0 +1,44 @@
+{
+  "source": "synthetic",
+  "note": "User deposits 20 SUI into a lending market and receives a receipt coin.",
+  "expectedCategory": "defi",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticDefiDeposit66666666666666666666",
+    "timestampMs": "1761213600000",
+    "transaction": {
+      "data": {
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gasData": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [{ "type": "pure", "valueType": "u64", "value": "20000000000" }],
+          "transactions": [
+            { "SplitCoins": ["GasCoin", [{ "Input": 0 }]] },
+            {
+              "MoveCall": {
+                "package": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "module": "lending",
+                "function": "deposit"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "1000000", "storageCost": "4000000", "storageRebate": "3000000", "nonRefundableStorageFee": "30000" }
+    },
+    "events": [],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "-20002000000" },
+      {
+        "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "coinType": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee::receipt::SSUI",
+        "amount": "19500000000"
+      }
+    ],
+    "objectChanges": []
+  }
+}

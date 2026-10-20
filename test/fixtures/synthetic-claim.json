@@ -1,0 +1,43 @@
+{
+  "source": "synthetic",
+  "note": "User claims a reward token from an incentive programme.",
+  "expectedCategory": "claim",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticClaim555555555555555555555555555",
+    "timestampMs": "1761127200000",
+    "transaction": {
+      "data": {
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gasData": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [],
+          "transactions": [
+            {
+              "MoveCall": {
+                "package": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "module": "incentive",
+                "function": "claim_reward"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "750000", "storageCost": "2500000", "storageRebate": "2000000", "nonRefundableStorageFee": "20000" }
+    },
+    "events": [],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "-1250000" },
+      {
+        "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "coinType": "0x2222222222222222222222222222222222222222222222222222222222222222::rwd::RWD",
+        "amount": "42000000"
+      }
+    ],
+    "objectChanges": []
+  }
+}

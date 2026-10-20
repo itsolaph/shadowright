@@ -1,0 +1,25 @@
+{
+  "name": "shadowright",
+  "version": "0.1.0",
+  "description": "A learner's permit for your wallet agent: earns autonomy per decision category on Sui, with memories on Walrus.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "cli": "node --env-file-if-exists=.env src/cli.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mysten-incubation/memwal": "^0.1.8",
+    "@mysten/seal": "^1.5.0",
+    "@mysten/sui": "^2.36.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "source": "synthetic",
+  "note": "User sends a collectible to another address with a bare TransferObjects command.",
+  "expectedCategory": "nft",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tx": {
+    "digest": "SyntheticNftSend888888888888888888888888",
+    "timestampMs": "1761386400000",
+    "transaction": {
+      "data": {
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gasData": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "transaction": {
+          "kind": "ProgrammableTransaction",
+          "inputs": [
+            { "type": "object", "objectType": "immOrOwnedObject", "objectId": "0x07" },
+            { "type": "pure", "valueType": "address", "value": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+          ],
+          "transactions": [{ "TransferObjects": [[{ "Input": 0 }], { "Input": 1 }] }]
+        }
+      }
+    },
+    "effects": {
+      "status": { "status": "success" },
+      "gasUsed": { "computationCost": "750000", "storageCost": "2000000", "storageRebate": "1980000", "nonRefundableStorageFee": "20000" }
+    },
+    "events": [],
+    "balanceChanges": [
+      { "owner": { "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "coinType": "0x2::sui::SUI", "amount": "-770000" }
+    ],
+    "objectChanges": [
+      {
+        "type": "transferred",
+        "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "recipient": { "AddressOwner": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        "objectType": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc::art::Artwork",
+        "objectId": "0x07"
+      }
+    ]
+  }
+}
