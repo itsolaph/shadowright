@@ -151,7 +151,7 @@ h2 {
 .tile .value.small {
   font-size: 0.95rem;
   font-weight: 500;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .cards {

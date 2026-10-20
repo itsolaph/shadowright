@@ -2,54 +2,180 @@
 
 **A learner's permit for your wallet agent.**
 
-Shadowright is a wallet agent that has to *earn* autonomy on Sui, one decision category at a time.
-Before each of your on-chain decisions it privately predicts what you will do. Then it reads what
-you actually did, and stores the episode (context, prediction, truth, verdict, lesson) as a memory
-in Walrus Memory. Accuracy recalled from those memories decides, per category, whether the agent
-is allowed to act alone:
+Wallet agents today ask for all-or-nothing access: either you sign every transaction yourself,
+or the agent can do anything with every coin from day one. Shadowright makes the agent *earn*
+autonomy instead, one decision category at a time (swaps, sends, staking, claims, ...).
+
+**In 30 seconds.** Before each of your on-chain decisions on Sui, the agent privately predicts
+what you will do. It then reads what you actually did through **Tatum**'s Sui RPC, and stores the
+episode (context, prediction, truth, verdict and a lesson) in **Walrus Memory**. Before the next
+decision it recalls those memories, and they are all it knows about you. Accuracy recalled from
+Walrus decides, per category, whether the agent holds a licence. A licensed agent may act alone,
+but only after a dry run, and it never signs. One wrong call revokes the licence.
+
+![Licence Board: per-category licences rebuilt from Walrus Memory recall](docs/img/board-overview.png)
+
+*The Licence Board on a real public mainnet wallet (address masked): 80 memories on Walrus,
+39% overall accuracy, stake / unstake licensed, everything else still shadowing.*
+
+## The loop
+
+```mermaid
+flowchart LR
+    R["Recall<br/>similar + recent memories<br/>(Walrus Memory)"] --> P["Predict<br/>the next action<br/>(habit-v2)"]
+    P --> O["Observe<br/>what the user did<br/>(Tatum Sui RPC)"]
+    O --> M["Remember<br/>prediction, truth, lesson<br/>(Walrus Memory)"]
+    M --> L["Licence<br/>per category<br/>LOCKED / SHADOWING / LICENSED"]
+    L --> R
+```
 
 | State | Meaning |
 | --- | --- |
 | 🔒 `LOCKED` | Fewer than 5 memories in this category. The agent only watches. |
 | 👀 `SHADOWING` | The agent predicts privately, but is not accurate enough yet (or is on probation). |
-| ✅ `LICENSED` | At least 80% correct over the last 10 memories. The agent may act alone (dry-run first). |
+| ✅ `LICENSED` | At least 80% correct over the last 10 memories. The agent may act alone, dry-run first. |
 
-One wrong call in a licensed category revokes the licence. Getting it back takes 3 correct calls
-in a row, even if the 10-memory accuracy is still high. A wrong prediction counts against both the
+A prediction is correct only if the kind of action, the venue (or recipient) and the coin all
+match; the amount is reported but not required. A wrong prediction counts against both the
 category the user acted in and the category the agent predicted, because acting on a false
-prediction would be just as harmful. A prediction is correct only if the kind of action, the venue
-(or recipient) and the coin all match; the amount is reported but not required.
+prediction would be just as harmful.
 
-Categories: swap, send / transfer, stake / unstake, claim / reward, nft, defi deposit / withdraw,
-contract call / other.
+## Results on mainnet
 
-![Licence Board](docs/screenshots/board.png)
-<!-- Screenshot placeholder: capture http://localhost:8787 after `npm run web`. -->
+From [docs/RUNLOG.md](docs/RUNLOG.md): a public mainnet wallet found by the scout, 80 decisions
+shadowed in order, 80 memories written to Walrus Memory.
 
-## Features
+| | Correct | Licensed at the end |
+| --- | --- | --- |
+| `heuristic-v1` baseline (time of day, previous category), dry | 21/80 (26%) | none |
+| `habit-v2`, memories on **Walrus Memory, mainnet** | **31/80 (39%)** | **stake / unstake** |
+| `habit-v2`, last 10 memories | **8/10 (80%)** | |
 
-- **Several subjects.** Learn from any number of wallets (`--wallet <name|address>`). Each has its
-  own Walrus Memory namespace, `shadowright-v1:<first 8 hex digits of the address>`, so memories
-  never mix, and its own local files under `data/subjects/<name>/`.
-- **Scout.** `scout` finds ordinary, diverse mainnet wallets to learn from, using public data only.
-- **Replay.** Walks a wallet's history in order: recall, predict, compare, remember, license.
-- **Live mode.** `watch` shadows new transactions as they happen. The prediction is stored, with its
-  timestamp, *before* the transaction is read. When the predicted category is licensed, the agent
-  builds the equivalent transaction from the user's latest matching one and dry-runs it ("would
-  have done X"). It never signs or sends. Builders exist for SUI and coin transfers and native
-  staking; for other actions (DEX routes, protocol-specific calls) the agent reports that it would
-  ask the user to sign instead.
-- **Licence Board.** `npm run web`: per-category cards, learning curve, licence events and the
-  memory timeline with links to Suiscan and Walruscan, all rebuilt from Walrus Memory recall.
-- **Portability.** `restore` (CLI or the board's button) rebuilds the board in a fresh Walrus
-  Memory client from Walrus only. The learner's permit travels with its memories.
+![Learning curve recalled from Walrus Memory](docs/img/learning-curve.png)
 
-## How it learns
+The dip in the middle is the user's routine changing (new protocols in September). The climb is
+the agent picking the new routine up from its own memories: from decision 65 on it gets 14 of the
+last 16 right. **Stake / unstake became LICENSED on 2026-10-16** (8 of the last 10 correct), and
+the next redeem shows "stake was LICENSED: the agent would have acted alone (dry-run first)".
 
-The predictor never scans your raw history: everything it knows comes from memories recalled from
-Walrus Memory. Each memory records what came just before the decision (the previous action and
-how long before it happened), what the agent predicted, what the user did, and a lesson (one of
-the demo run's memories, trailer shortened):
+<img src="docs/img/card-stake.png" alt="The stake / unstake card: LICENSED, 80% (8/10) over the last 10 memories" width="320">
+
+Every card, the curve, the licence events and the memory timeline are rebuilt from Walrus Memory
+recall. Each memory links to its transaction on Suiscan and its blob on Walruscan:
+
+![Memory timeline: prediction, what the user did, lesson, Suiscan and Walruscan links](docs/img/memory-timeline.png)
+
+**Portability.** "Restore from Walrus" starts a brand-new Walrus Memory client with no local
+files, re-indexes the namespace from Walrus and rebuilds the board from recall alone. Same 80
+memories, same 31 correct:
+
+![Restore from Walrus: board rebuilt in a fresh client](docs/img/restore-from-walrus.png)
+
+**Live mode.** `watch` stores a standing prediction, with its timestamp, *before* it reads the
+next transaction. One poll costs 2 Tatum credits:
+
+![watch --once: board seeded from Walrus Memory, standing prediction, Tatum credit counter](docs/img/terminal-watch.png)
+
+### Limitations, honestly
+
+- **Swaps stay unlicensed: 0/10** over the last 10, and none of the 21 swap memories was a correct
+  call. **Defi deposit / withdraw: 1/10.** Both keep shadowing, which is exactly what the permit
+  is for: the agent does not get to touch what it cannot predict.
+- Send / transfer and claim / reward sit at 5/10: the user alternates between two deposit
+  addresses, and one session opened with a vault top-up instead of a claim.
+- Milestone 1 ran on a wallet that turned out to be a bot working one perps clearing house: only
+  one category (`other`) ever moved. That is why milestone 2 added the scout and its bot filters.
+- Dry-run builders exist for SUI and coin transfers and native staking. For the licensed category
+  here (a liquid-staking redeem built by an aggregator) the agent says it would ask the user to
+  sign instead.
+- Recall is similarity search, so the board reads a best-effort window of the 60 most recent
+  memories per category. Plenty for licences judged over the last 10.
+
+## Quickstart
+
+Requires Node.js 24 or newer (TypeScript runs natively through type stripping, no build step), a
+[Tatum](https://tatum.io) API key and a Walrus Memory account (delegate key and account id).
+
+```sh
+npm install --registry=https://registry.npmjs.org
+cp .env.example .env              # TATUM_API_KEY, MEMWAL_PRIVATE_KEY, MEMWAL_ACCOUNT_ID
+npm run cli -- health --tatum
+
+# Find a subject (read-only, public mainnet data) and pick one by rank.
+npm run cli -- scout --budget 3000
+npm run cli -- subjects add demo --scout 1 --default
+
+npm run cli -- backfill --latest 300             # newest 300 own transactions, counts per category
+npm run cli -- replay --last 80                  # dry run: memories stay in-process
+npm run cli -- replay --last 80 --write          # store each episode in Walrus Memory (mainnet)
+npm run web                                      # Licence Board on http://localhost:8787
+npm run cli -- watch --interval 60               # live mode (2 Tatum credits per poll)
+
+npm test
+npm run typecheck
+```
+
+## CLI reference
+
+Every command takes `--wallet <name|address>`; without it the default subject is used.
+
+| Command | What it does |
+| --- | --- |
+| `subjects` | List subjects (addresses shortened). |
+| `subjects add <name> (<address> \| --scout RANK) [--namespace NS] [--default]` | Add a subject to `data/subjects.json` (git-ignored). |
+| `scout [--budget N] [--event-pages N] [--top N] [--save NAME]` | Find ordinary, diverse mainnet wallets via Tatum (read-only), with bot and scripted-loop filters. |
+| `backfill [--latest N \| --max-pages N]` | Fetch and cache the subject's history via Tatum; print counts per category. |
+| `replay [--limit N] [--last N] [--write] [--predictor habit\|heuristic]` | Walk the history in order: recall, predict, compare, remember, update licences. Without `--write` memories stay in an in-process store. |
+| `watch [--interval S] [--once] [--max-polls N]` | Live mode: standing prediction stored before each new transaction is read; dry-run when licensed. |
+| `board` | Licence board recalled from Walrus Memory. |
+| `restore [--limit N]` | Re-index this namespace from Walrus, then show the board. |
+| `health [--tatum]` | Check Walrus Memory (and Tatum) connectivity and configuration. |
+| `fixtures [--per N]` | Export real classified transactions as test fixtures. |
+
+Configuration (environment or `.env`): `TATUM_API_KEY`, `MEMWAL_PRIVATE_KEY`, `MEMWAL_ACCOUNT_ID`;
+optional `SHADOWRIGHT_WALLET` (a subject named `wallet`), `SHADOWRIGHT_NAMESPACE`,
+`SHADOWRIGHT_DATA_DIR` (default `data/`), `SHADOWRIGHT_MASK_ADDRESSES=1` (show only the first 4
+hex digits of wallet addresses, for screenshots and recordings), `TATUM_RPC_URL`,
+`MEMWAL_SERVER_URL`, `HOST` and `PORT` for the board (default `127.0.0.1:8787`). Everything under
+`data/` is git-ignored, including subject addresses. `replay --write` and `watch` keep local
+journals, so running them again continues where they stopped instead of writing duplicates.
+
+## How Shadowright uses Tatum
+
+Tatum's Sui mainnet JSON-RPC gateway is the agent's eyes. Methods used:
+
+| Method | Used for |
+| --- | --- |
+| `suix_queryEvents` | Scout seeds: recent native stake / unstake requests, Cetus swaps, DeepBook fills. |
+| `suix_queryTransactionBlocks` | Backfill and sampling (inputs, effects, events, balance and object changes); digests only for new-transaction detection in live mode. |
+| `sui_multiGetTransactionBlocks` | Read a new transaction once its prediction is stored; recover pages with transactions the node can no longer render. |
+| `suix_getCoinMetadata` | Coin symbols and decimals. |
+| `suix_getCoins`, `suix_getReferenceGasPrice`, `sui_dryRunTransactionBlock` | Simulate what a licensed agent would have done. No signature needed: nothing is signed or sent. |
+| `sui_getLatestCheckpointSequenceNumber` | Health check. |
+
+**Credit budget.** Each call costs 2 credits. The client (`src/tatum.ts`) is throttled to 2.5
+requests/s with a token bucket (the free plan allows 3), retries 429/5xx and stalled requests with
+exponential backoff, caches every stable response on disk (re-runs cost nothing), and keeps a
+running credit total in `data/tatum-usage.json`, even when a run is interrupted. All runs so far
+used about 4,530 credits of 100,000: scouting ~3,990, backfills ~450, live mode 2 per poll.
+
+## How Shadowright uses Walrus Memory
+
+Walrus Memory (`@mysten-incubation/memwal`) is the agent's only memory of the user.
+
+- **One namespace per subject**: `shadowright-v1:<first 8 hex digits of the address>`, so the
+  memories of different wallets never mix.
+- **`remember`**: every episode is one memory, written as plain prose (so semantic recall matches
+  on meaning) plus a `#sr1` trailer line with exact values, so it parses back losslessly. The
+  agent waits until the job is on Walrus and keeps the blob id. Failed jobs are resubmitted under
+  a fresh idempotency key; relayer rate limits are waited out.
+- **`recall`**: before every prediction, twice with the same query in the memories' own words:
+  the most similar memories and the most recent similar ones, so a habit that changed lately is
+  not outvoted by older ones. The board recalls one category at a time and caches for 5 minutes.
+- **`restore`**: re-indexes a namespace from Walrus into a fresh client; the board is then
+  rebuilt from recall only.
+
+One real memory (shortened):
 
 ```
 Shadowright memory [stake]. Context: Tue afternoon (2026-10-06 14:58 UTC), 1 minute after claim
@@ -60,85 +186,34 @@ keep predicting it.
 #sr1 tx=... ts=... after=claim by=habit-v2 ok=1 pc=stake pt=... bc=claim bt=... gap=... ...
 ```
 
-Before each decision the agent recalls memories twice with the same query (the current moment
-and the previous action, in the memories' own words): the most similar ones, and the most recent
-similar ones, so a habit that changed lately is not outvoted by older ones. The `habit-v2`
-predictor then lets each recalled memory vote for what the user did:
+The `habit-v2` predictor lets each recalled memory vote for what the user did: memories that
+followed the same previous action count most; the same session state (a fresh session after a
+break, or the middle of one) counts more; newer memories outweigh older ones; and memories of
+past misses vote *against* the action that was wrongly predicted (`lesson applied: avoided ...`).
+It sits behind a small `Predictor` interface (`src/predictor.ts`), so an LLM-backed predictor can
+be dropped in without touching the loop or the licence rules.
 
-- memories that followed the **same previous action** count most, the same kind of action less;
-- memories from the **same session state** count more (a new session after a break, or the middle
-  of one: claim, then redeem, then send, a minute apart);
-- **newer** memories outweigh older ones of the same kind, so a new routine takes over quickly;
-- memories of **past misses** vote against the action that was wrongly predicted, and the
-  prediction says so (`lesson applied: avoided ...`).
+## Safety model
 
-On the demo wallet (80 decisions, a public mainnet wallet with routines that change over time)
-this lifts accuracy from 26% with the milestone 1 `heuristic-v1` (kept as a baseline:
-`replay --predictor heuristic`) to 39% on mainnet, ending at 80% over the last 10 memories; the
-category with a steady routine (stake / unstake) earns its licence while the others keep
-shadowing. See [docs/RUNLOG.md](docs/RUNLOG.md) for the numbers and the learning curve. The
-predictor sits behind a small `Predictor` interface (`src/predictor.ts`), so an LLM-backed
-predictor can be dropped in without touching the replay loop or the licence logic.
+- **Never signs, never sends.** There is no signing key for the subject wallet anywhere in the
+  code. The only write path is Walrus Memory (the agent's own memories).
+- **Dry-run only.** When the predicted category is licensed, `watch` rebuilds the equivalent
+  transaction from the user's latest matching one and calls `sui_dryRunTransactionBlock`
+  ("would have done X"). On the demo wallet the dry-run of a SUI transfer returned
+  `InsufficientCoinBalance`, because the user had already sent the SUI on: the check working.
+- **Licences are fragile on purpose.** One wrong call in a licensed category revokes the licence.
+  Getting it back takes 3 correct calls in a row, even if the 10-memory accuracy is still high.
+- **Predictions are made before reading.** Live-mode memories carry the time the prediction was
+  stored, before the transaction was read, so a prediction can never peek at its answer.
+- **Read-only board.** The Licence Board binds to localhost and never signs or sends anything.
+- **No secrets or addresses in the repo.** Keys come from the environment; subject addresses live
+  in the git-ignored `data/subjects.json`; `SHADOWRIGHT_MASK_ADDRESSES=1` masks them on screen.
 
-## How it uses Tatum and Walrus
+## More
 
-- **Tatum** (Sui mainnet JSON-RPC gateway) is the agent's eyes:
-  - `suix_queryEvents` on staking and DEX events (`0x3::validator` stake and unstake requests,
-    Cetus swaps, DeepBook fills) seeds the scout with active addresses;
-  - `suix_queryTransactionBlocks` (newest first, with input, effects, events, balance and object
-    changes) samples and backfills histories; with digests only, it detects new transactions in
-    live mode;
-  - `sui_multiGetTransactionBlocks` reads a new transaction once its prediction is stored, and
-    recovers pages that contain transactions the node can no longer render;
-  - `suix_getCoinMetadata` resolves symbols and decimals;
-  - `suix_getCoins`, `suix_getReferenceGasPrice` and `sui_dryRunTransactionBlock` simulate what a
-    licensed agent would have done. Dry-runs need no signature: nothing is ever signed or sent.
-
-  The client (`src/tatum.ts`) is throttled to 2.5 requests/s with a token bucket, retries 429/5xx
-  and stalled requests with exponential backoff, caches every stable response on disk (re-runs
-  cost no credits), and keeps a running credit total in `data/tatum-usage.json`, even when a run
-  is interrupted.
-- **Walrus Memory** (`@mysten-incubation/memwal`) is the agent's memory. Each episode is stored
-  with `remember` and awaited until it is on Walrus, recalled with semantic `recall` (by relevance
-  and by recency) before every prediction, and the licence board is rebuilt from recalled
-  memories. `restore` re-indexes a namespace from Walrus into a fresh instance.
-
-## Run it
-
-Requires Node.js 24 or newer (TypeScript runs natively through type stripping, no build step).
-
-```sh
-npm install --registry=https://registry.npmjs.org
-cp .env.example .env              # then fill in the values
-npm run cli -- health --tatum
-
-# Find a subject (read-only, public mainnet data), then pick one by rank.
-npm run cli -- scout --budget 3000
-npm run cli -- subjects add demo --scout 1 --default
-
-npm run cli -- backfill --latest 300             # newest 300 own transactions, counts per category
-npm run cli -- replay --last 80                  # dry run: memories stay in-process
-npm run cli -- replay --last 80 --write          # store each episode in Walrus Memory (mainnet)
-npm run cli -- board                             # licence board recalled from Walrus Memory
-npm run cli -- restore                           # portability: re-index from Walrus, show the board
-
-npm run cli -- watch --interval 60               # live mode (2 Tatum credits per poll)
-npm run web                                      # Licence Board on http://localhost:8787
-
-npm test
-npm run typecheck
-```
-
-Every command takes `--wallet <name|address>`; without it the default subject is used.
-Configuration (environment or `.env`): `TATUM_API_KEY`, `MEMWAL_PRIVATE_KEY`, `MEMWAL_ACCOUNT_ID`,
-and optionally `SHADOWRIGHT_WALLET` (a subject named `wallet`, kept on the milestone 1 namespace
-`shadowright-v1` unless `SHADOWRIGHT_NAMESPACE` says otherwise), `SHADOWRIGHT_DATA_DIR` (default
-`data/`), `TATUM_RPC_URL`, `MEMWAL_SERVER_URL`, `PORT` and `HOST` for the board (default
-`127.0.0.1:8787`). Subjects with their addresses live in `data/subjects.json`; all of `data/` is
-git-ignored.
-
-`replay --write` and `watch` keep local journals, so running them again continues where they
-stopped instead of writing duplicates.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): modules and data flow.
+- [docs/RUNLOG.md](docs/RUNLOG.md): every mainnet run, with Walrus Memory job and blob ids.
+- [docs/BLOG.md](docs/BLOG.md): the story of how it learned.
 
 ## Layout
 
@@ -148,7 +223,7 @@ stopped instead of writing duplicates.
 | `src/history.ts` | Backfill and normalise transactions into `Decision`s |
 | `src/classify.ts` | Rule-based category classifier (rules in priority order, each explains itself) |
 | `src/action.ts` | The comparable action (category, venue or recipient, coin, amount bucket) and time features |
-| `src/subjects.ts` | Subjects, their namespaces and local files |
+| `src/subjects.ts` | Subjects, their namespaces, local files and address masking |
 | `src/scout.ts` | Finds ordinary, diverse wallets; bot and loop filters |
 | `src/predictor.ts` | `Predictor` interface, `habit-v2` and the `heuristic-v1` baseline |
 | `src/memory.ts` | Memory text format and the Walrus Memory wrapper |

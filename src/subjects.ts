@@ -44,6 +44,24 @@ export function shortAddress(address: string): string {
   return normaliseAddress(address).slice(0, 10);
 }
 
+/**
+ * Display forms for screenshots and recordings of someone else's wallet
+ * (`SHADOWRIGHT_MASK_ADDRESSES=1`): only the first 4 hex digits of an address stay visible.
+ */
+export function maskAddress(address: string): string {
+  return normaliseAddress(address).slice(0, 6);
+}
+
+/** `shadowright-v1:0x12ab34cd` becomes `shadowright-v1:0x12ab…`. */
+export function maskNamespace(namespace: string): string {
+  return namespace.replace(/:(0x[0-9a-f]{4})[0-9a-f]+$/i, ':$1…');
+}
+
+/** Drops the tail of shortened recipients ("to 0x12ab…cd34" becomes "to 0x12ab…"); packages (`::`) stay. */
+export function maskRecipients(text: string): string {
+  return text.replace(/\bto (0x[0-9a-f]{4})…[0-9a-f]{4}(?!::)/gi, 'to $1…');
+}
+
 export function namespaceFor(namespaceBase: string, address: string): string {
   return `${namespaceBase}:${shortAddress(address)}`;
 }

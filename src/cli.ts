@@ -23,6 +23,9 @@ import { flushUsage, PATIENT, pickSubject, sharedPaths, subjectSources, tatumCli
 import { DEFAULT_CRITERIA, scout, type ScoutResult } from './scout.ts';
 import {
   listSubjects,
+  maskAddress,
+  maskNamespace,
+  maskRecipients,
   readSubjectsFile,
   shortAddress,
   withSubject,
@@ -73,8 +76,14 @@ const WALLET_OPTION = { wallet: { type: 'string' } } as const;
 /** Memories per recall query; each prediction runs two queries (most similar, most recent). */
 const RECALL_LIMIT = '15';
 
-function label(subject: Subject): string {
+function label(config: Config, subject: Subject): string {
+  if (config.maskAddresses) return `${subject.name} (${maskAddress(subject.address)}…, namespace ${maskNamespace(subject.namespace)})`;
   return `${subject.name} (${shortAddress(subject.address)}…, namespace ${subject.namespace})`;
+}
+
+/** Output that may name a transfer recipient, masked when `SHADOWRIGHT_MASK_ADDRESSES` is set. */
+function shown(config: Config, text: string): string {
+  return config.maskAddresses ? maskRecipients(text) : text;
 }
 
 async function loadHistory(paths: SubjectPaths): Promise<History> {
@@ -102,7 +111,7 @@ async function cmdSubjects(config: Config, args: string[]): Promise<void> {
   const sources = await subjectSources(config);
   for (const subject of listSubjects(sources)) {
     const isDefault = subject.name === sources.file.default ? '  (default)' : '';
-    console.log(`${label(subject)}${isDefault}`);
+    console.log(`${label(config, subject)}${isDefault}`);
   }
 }
 
@@ -155,7 +164,7 @@ async function cmdBackfill(config: Config, args: string[]): Promise<void> {
   });
   const { subject, paths } = await pickSubject(config, values.wallet);
   const client = tatumClient(config);
-  console.log(`Backfilling ${label(subject)} from Sui mainnet via Tatum...`);
+  console.log(`Backfilling ${label(config, subject)} from Sui mainnet via Tatum...`);
 
   const { history, transactions } = await backfill(client, subject.address, {
     maxPages: Number(values['max-pages']),
@@ -209,7 +218,7 @@ async function cmdReplay(config: Config, args: string[]): Promise<void> {
 
   console.log(
     write
-      ? `Replay ${label(subject)} with Walrus Memory: ${existing.length} existing memories, ${total} decisions to shadow.`
+      ? `Replay ${label(config, subject)} with Walrus Memory: ${existing.length} existing memories, ${total} decisions to shadow.`
       : `Dry replay of ${subject.name} with in-process memory (nothing leaves this machine): ${total} decisions to shadow.`,
   );
   console.log('');
@@ -224,7 +233,7 @@ async function cmdReplay(config: Config, args: string[]): Promise<void> {
     existing,
     recallLimit: Number(values.recall),
     onStep: async (step) => {
-      console.log(renderStep(step, total));
+      console.log(shown(config, renderStep(step, total)));
       if (journal) {
         await journal.add(step.decision.digest, step.stored);
         console.log(`   stored on Walrus: job ${step.stored.jobId}, blob ${step.stored.blobId}`);
@@ -260,7 +269,7 @@ async function cmdWatch(config: Config, args: string[]): Promise<void> {
 
   const state = (await readJson<WatchState>(paths.watch)) ?? (await initialWatchState(client, subject, decisions));
   const { board } = computeBoard(await memory.recallAll(), config.licence);
-  console.log(`Watching ${label(subject)}: polling every ${values.interval}s via Tatum (2 credits per poll).`);
+  console.log(`Watching ${label(config, subject)}: polling every ${values.interval}s via Tatum (2 credits per poll).`);
   console.log(`${renderBoard(board)}\n`);
 
   const watcher = new Watcher(state, board, {
@@ -283,7 +292,7 @@ async function cmdWatch(config: Config, args: string[]): Promise<void> {
     },
     onStep: async (step) => {
       await journal.add(step.decision.digest, step.stored);
-      console.log(renderWatchStep(step));
+      console.log(shown(config, renderWatchStep(step)));
       if (step.wouldAct) {
         const action = step.standing.prediction.action;
         const outcome = await dryRunAction(client, subject.address, action, findTemplate(action, decisions, txs));
@@ -297,7 +306,7 @@ async function cmdWatch(config: Config, args: string[]): Promise<void> {
   for (let poll = 1; poll <= maxPolls; poll++) {
     const steps = await watcher.poll();
     const { standing } = watcher.current.state;
-    if (steps.length === 0 && standing) console.log(renderStanding(standing));
+    if (steps.length === 0 && standing) console.log(shown(config, renderStanding(standing)));
     if (poll < maxPolls) await new Promise((resolve) => setTimeout(resolve, Number(values.interval) * 1000));
   }
   console.log(`\n${renderBoard(watcher.current.board)}`);
@@ -331,7 +340,7 @@ async function cmdBoard(config: Config, args: string[]): Promise<void> {
 async function printBoard(config: Config, subject: Subject): Promise<void> {
   const records = await walrusMemory(config, subject.namespace).recallAll();
   const { board, events } = computeBoard(records, config.licence);
-  console.log(`${records.length} memories recalled from Walrus Memory for ${label(subject)}.\n`);
+  console.log(`${records.length} memories recalled from Walrus Memory for ${label(config, subject)}.\n`);
   console.log(renderBoard(board));
   if (events.length > 0) {
     console.log('\nRecent licence events:');
@@ -344,7 +353,7 @@ async function cmdRestore(config: Config, args: string[]): Promise<void> {
   const { subject } = await pickSubject(config, values.wallet);
   const result = await walrusMemory(config, subject.namespace).restore(Number(values.limit));
   console.log(
-    `Restore ${result.namespace}: restored ${result.restored}, skipped ${result.skipped}, failed ${result.failed}, ` +
+    `Restore ${config.maskAddresses ? maskNamespace(result.namespace) : result.namespace}: restored ${result.restored}, skipped ${result.skipped}, failed ${result.failed}, ` +
       `total on chain ${result.total}${result.truncated ? ' (truncated: run again)' : ''}.\n`,
   );
   await printBoard(config, subject);
@@ -360,7 +369,7 @@ async function cmdHealth(config: Config, args: string[]): Promise<void> {
   ];
   for (const [name, value] of env) console.log(`${name.padEnd(20)} ${value ? 'set' : 'MISSING'}`);
   const { subject } = await pickSubject(config, values.wallet);
-  console.log(`subject              ${label(subject)}`);
+  console.log(`subject              ${label(config, subject)}`);
 
   const health = await walrusMemory(config, subject.namespace).health();
   console.log(`Walrus Memory        ${health.status} (relayer ${health.version}${health.write_ready === false ? ', writes not ready' : ''})`);

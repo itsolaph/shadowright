@@ -12,6 +12,8 @@ export interface Config {
   walletNamespace: string | undefined;
   wallet: string | undefined;
   dataDir: string;
+  /** Show only the first 4 hex digits of wallet addresses (screenshots, recordings). */
+  maskAddresses: boolean;
   licence: LicencePolicy;
 }
 
@@ -26,6 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     walletNamespace: env.SHADOWRIGHT_NAMESPACE || undefined,
     wallet: env.SHADOWRIGHT_WALLET || undefined,
     dataDir: env.SHADOWRIGHT_DATA_DIR || 'data',
+    maskAddresses: ['1', 'true', 'yes'].includes((env.SHADOWRIGHT_MASK_ADDRESSES ?? '').toLowerCase()),
     licence: DEFAULT_LICENCE_POLICY,
   };
 }

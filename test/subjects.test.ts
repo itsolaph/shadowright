@@ -5,6 +5,9 @@ import { ShadowMemory } from '../src/memory.ts';
 import {
   ENV_SUBJECT,
   listSubjects,
+  maskAddress,
+  maskNamespace,
+  maskRecipients,
   namespaceFor,
   normaliseAddress,
   resolveSubject,
@@ -104,6 +107,23 @@ describe('subject namespaces', () => {
     assert.deepEqual(
       (await bob.recallAll()).map((r) => r.digest),
       ['bob-tx'],
+    );
+  });
+});
+
+describe('address masking', () => {
+  it('keeps only the first 4 hex digits of the subject and its namespace', () => {
+    assert.equal(maskAddress(ALICE), '0xa1a1');
+    assert.equal(maskNamespace(namespaceFor('shadowright-v1', ALICE)), 'shadowright-v1:0xa1a1…');
+    assert.equal(maskNamespace('shadowright-v1'), 'shadowright-v1');
+  });
+
+  it('masks transfer recipients but leaves packages and coins alone', () => {
+    assert.equal(maskRecipients('send 1-10 SUI to 0x12ab…cd34'), 'send 1-10 SUI to 0x12ab…');
+    assert.equal(maskRecipients('stake 1-10 vSUI via 0x68d2…ae20::stake_pool'), 'stake 1-10 vSUI via 0x68d2…ae20::stake_pool');
+    assert.equal(
+      maskRecipients('after send SUI to 0x12ab…cd34, I expected send SUI to 0x99ff…0011'),
+      'after send SUI to 0x12ab…, I expected send SUI to 0x99ff…',
     );
   });
 });

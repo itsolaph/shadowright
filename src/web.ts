@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { buildBoardView, type BoardView } from './boardview.ts';
 import { loadConfig, type Config } from './config.ts';
 import { pickSubject, subjectSources, walrusMemory } from './runtime.ts';
-import { listSubjects, shortAddress, type Subject } from './subjects.ts';
+import { listSubjects, maskAddress, maskNamespace, maskRecipients, shortAddress, type Subject } from './subjects.ts';
 
 /**
  * The Licence Board: a small read-only web server. Data comes from Walrus Memory recall;
@@ -56,21 +56,44 @@ class BoardServer {
   private async subjects(): Promise<SubjectSummary[]> {
     const sources = await subjectSources(this.config);
     return listSubjects(sources).map((s) => ({
-      name: s.name,
-      short: shortAddress(s.address),
-      namespace: s.namespace,
+      ...this.publicSubject(s),
       isDefault: s.name === sources.file.default,
     }));
+  }
+
+  /** Subject as shown on the page: shortened address, masked further when configured. */
+  private publicSubject(subject: Subject): Omit<SubjectSummary, 'isDefault'> {
+    const mask = this.config.maskAddresses;
+    return {
+      name: subject.name,
+      short: mask ? maskAddress(subject.address) : shortAddress(subject.address),
+      namespace: mask ? maskNamespace(subject.namespace) : subject.namespace,
+    };
+  }
+
+  private present(subject: Subject, view: BoardView) {
+    const shown = this.config.maskAddresses
+      ? {
+          ...view,
+          timeline: view.timeline.map((m) => ({
+            ...m,
+            predicted: maskRecipients(m.predicted),
+            actual: maskRecipients(m.actual),
+            lesson: maskRecipients(m.lesson),
+          })),
+        }
+      : view;
+    return { subject: this.publicSubject(subject), ...shown };
   }
 
   /** Board from Walrus Memory recall, cached for a few minutes. */
   private async board(selector: string | undefined, fresh: boolean) {
     const { subject } = await pickSubject(this.config, selector);
     const cached = this.cache.get(subject.name);
-    if (!fresh && cached && Date.now() - cached.at < CACHE_MS) return withSubject(subject, cached.view);
+    if (!fresh && cached && Date.now() - cached.at < CACHE_MS) return this.present(subject, cached.view);
     const view = buildBoardView(await walrusMemory(this.config, subject.namespace).recallAll(), this.config.licence);
     this.cache.set(subject.name, { at: Date.now(), view });
-    return withSubject(subject, view);
+    return this.present(subject, view);
   }
 
   /**
@@ -83,12 +106,8 @@ class BoardServer {
     const { restored, skipped, failed, total, truncated } = await fresh.restore(100);
     const view = buildBoardView(await fresh.recallAll(), this.config.licence);
     this.cache.set(subject.name, { at: Date.now(), view });
-    return { ...withSubject(subject, view), restore: { restored, skipped, failed, total, truncated } };
+    return { ...this.present(subject, view), restore: { restored, skipped, failed, total, truncated } };
   }
-}
-
-function withSubject(subject: Subject, view: BoardView) {
-  return { subject: { name: subject.name, short: shortAddress(subject.address), namespace: subject.namespace }, ...view };
 }
 
 function sendJson(response: ServerResponse, body: unknown, status = 200): void {

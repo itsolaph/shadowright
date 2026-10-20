@@ -5,6 +5,23 @@ address, no local paths: only counts, accuracy and Walrus Memory job / blob ids.
 demo subject is "a public mainnet wallet (address in demo config)": its address lives only in the
 git-ignored `data/subjects.json`.
 
+## Milestone 3: presentation (screenshots, video, blog)
+
+Status: **done**. Live runs for the README screenshots and the demo video, with
+`SHADOWRIGHT_MASK_ADDRESSES=1` so only the first 4 hex digits of the address are shown:
+
+- `watch --once` (2026-10-20 08:19 UTC): board seeded from Walrus Memory (80 memories, stake
+  LICENSED 8/10), standing prediction *claim 1-10 vSUI via the vault* (confidence 72%), no new
+  transaction. 1 Tatum call (~2 credits); all runs ~4,532 credits.
+- `restore` (CLI) and "Restore from Walrus" (board, fresh client): restored 0, skipped 21, failed
+  0, total 21; board rebuilt from 80 recalled memories, 31 correct, identical to before.
+- `replay --last 80` (dry, in-process): 32/80 (40%), stake LICENSED on 2026-10-16, as in
+  milestone 2.
+- What-if for the video (never stored): the board's own licence code fed one hypothetical wrong
+  stake call after the 80 real memories. Stake goes LICENSED -> SHADOWING ("revoked: wrong call
+  (category, target, coin) while licensed"), on probation until 3 correct calls in a row.
+- Tests: 111 pass, typecheck clean.
+
 ## Milestone 2: a diverse subject, a better learner, live mode and the board
 
 Status: **done** (mainnet run, 80 new memories).
