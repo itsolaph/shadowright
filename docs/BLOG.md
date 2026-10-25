@@ -45,7 +45,7 @@ In live mode we ask for digests only, which is cheap, and read the new transacti
 simulates what a licensed agent would have done.
 
 Each call costs 2 credits, so the client throttles itself, retries with backoff, caches stable
-responses on disk and keeps a running credit total. All our runs so far cost about 4,530 credits
+responses on disk and keeps a running credit total. All our runs so far cost about 4,590 credits
 out of 100,000. One live poll costs 2.
 
 ## Walrus Memory is the only thing it knows about you
@@ -114,7 +114,20 @@ last 16 right, predicting claim, then redeem, then send, with 57 to 97% confiden
 **stake / unstake earned its licence**, and on the next redeem the log reads "stake was LICENSED:
 the agent would have acted alone (dry-run first)".
 
-What did not work is just as visible. **Swaps are still at 0 out of 10**, and DeFi deposits at
+Then we left it running. The `watch` job polls the wallet every 6 hours, stores a standing
+prediction before it reads the next transaction, and writes the result to Walrus Memory. Ten more
+real decisions came in, for 90 memories in total. On 2026-10-21 the agent, still licensed for
+stake, expected another redeem on the staking pool. The user deposited USDC into a Navi vault
+instead. Wrong category, wrong target, wrong coin, so the board logged **"revoked: wrong call (category,
+target, coin) while licensed"** and stake dropped back to shadowing. No simulation, no staged miss: a real user
+changed their routine and the permit was pulled on the spot.
+
+The new routine also shows in the score. Only 1 of those 10 live calls was right, so the totals
+are now **32 of 90, 36%**, and stake has to earn its licence again with 3 correct calls in a row.
+That is the design working: when the agent stops understanding you, it loses its permission first
+and its confidence second.
+
+What did not work is just as visible. At the 80-memory mark, **swaps were still at 0 out of 10**, and DeFi deposits at
 1 out of 10. Sends and claims sit at 5 out of 10, partly because the user alternates between two
 deposit addresses. Those categories keep shadowing, and that is the point. An agent that cannot predict your swaps has no business
 making them.

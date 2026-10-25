@@ -60,6 +60,11 @@ the agent picking the new routine up from its own memories: from decision 65 on 
 last 16 right. **Stake / unstake became LICENSED on 2026-10-16** (8 of the last 10 correct), and
 the next redeem shows "stake was LICENSED: the agent would have acted alone (dry-run first)".
 
+**Then a real revocation.** Live mode kept watching the same wallet. On 2026-10-21 the agent,
+licensed for stake, expected another redeem; the user deposited USDC into a Navi vault instead.
+The board logged "revoked: wrong call (category, target, coin) while licensed" and stake went
+back to shadowing. Nothing staged. Totals after 10 live calls: 90 memories, 32 correct (36%).
+
 <img src="docs/img/card-stake.png" alt="The stake / unstake card: LICENSED, 80% (8/10) over the last 10 memories" width="320">
 
 Every card, the curve, the licence events and the memory timeline are rebuilt from Walrus Memory
