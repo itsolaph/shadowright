@@ -10,12 +10,12 @@ import {
   type CoinObject,
   type SuiTransactionBlock,
 } from './sui.ts';
-import type { TatumSuiClient } from './tatum.ts';
+import { GRAPHQL_ERROR_CODE, RpcError, type TatumSuiClient } from './tatum.ts';
 import type { Action, Decision } from './types.ts';
 
 /**
- * What a licensed agent would have done, simulated with `sui_dryRunTransactionBlock`.
- * Nothing is signed and nothing is executed: dry-runs need no signature.
+ * What a licensed agent would have done, simulated with GraphQL `simulateTransaction`.
+ * Nothing is signed and nothing is executed: simulations need no signature.
  */
 export interface DryRunOutcome {
   status: 'success' | 'failure' | 'unsupported';
@@ -52,7 +52,16 @@ export async function dryRunAction(
   tx.setGasBudget(GAS_BUDGET);
   tx.setGasPayment(gasCoins.data.map(objectRefOf));
 
-  const result = (await client.dryRunTransactionBlock(toBase64(await tx.build()))) as DryRunResponse;
+  let result;
+  try {
+    result = await client.dryRunTransactionBlock(toBase64(await tx.build()));
+  } catch (error) {
+    // Rejected before execution (e.g. gas coins too small): a failed dry-run, not a crash.
+    if (error instanceof RpcError && error.code === GRAPHQL_ERROR_CODE) {
+      return { status: 'failure', summary, detail: `dry-run rejected: ${error.message}` };
+    }
+    throw error;
+  }
   const status = result.effects?.status;
   if (status?.status !== 'success') {
     return { status: 'failure', summary, detail: `dry-run failed: ${status?.error ?? 'unknown error'}` };
@@ -124,11 +133,6 @@ export function stakeValidatorOf(tx: SuiTransactionBlock): string | undefined {
 
 function objectRefOf(coin: CoinObject) {
   return { objectId: coin.coinObjectId, version: coin.version, digest: coin.digest };
-}
-
-interface DryRunResponse {
-  effects?: { status: { status: 'success' | 'failure'; error?: string } };
-  balanceChanges?: BalanceChange[];
 }
 
 function balanceSummary(changes: BalanceChange[], owner: string): string {

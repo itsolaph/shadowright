@@ -4,7 +4,7 @@ import { MemWalMock } from '@mysten-incubation/memwal';
 import { loadConfig, type Config } from './config.ts';
 import { dryRunAction, findTemplate } from './dryrun.ts';
 import { readJson, writeJson } from './files.ts';
-import { backfill, coinLookupFor, toDecision, type History } from './history.ts';
+import { backfill, coinLookupFor, ownDigestsAfter, toDecision, type History } from './history.ts';
 import { Journal } from './journal.ts';
 import { computeBoard } from './licence.ts';
 import { ShadowMemory } from './memory.ts';
@@ -278,7 +278,7 @@ async function cmdWatch(config: Config, args: string[]): Promise<void> {
     policy: config.licence,
     recallLimit: Number(values.recall),
     ports: {
-      listNew: (cursor) => listNewDigests(client, subject.address, cursor),
+      listNew: (cursor) => ownDigestsAfter(client, subject.address, cursor),
       read: async (digest) => {
         const [tx] = await client.multiGetTransactionBlocks([digest]);
         if (!tx) throw new Error(`transaction ${digest} not found`);
@@ -318,17 +318,6 @@ async function initialWatchState(client: TatumSuiClient, subject: Subject, decis
   if (previous) return { cursor: previous.digest, previous, processed: 0 };
   const latest = await client.queryTransactionBlocks({ FromAddress: subject.address }, null, 1, { descending: true, digestsOnly: true, noCache: true });
   return { cursor: latest.data[0]?.digest ?? null, processed: 0 };
-}
-
-async function listNewDigests(client: TatumSuiClient, address: string, cursor: string | null): Promise<string[]> {
-  const digests: string[] = [];
-  let next = cursor;
-  for (;;) {
-    const page = await client.queryTransactionBlocks({ FromAddress: address }, next, 50, { digestsOnly: true, noCache: true });
-    digests.push(...page.data.map((tx) => tx.digest));
-    if (!page.hasNextPage || !page.nextCursor) return digests;
-    next = page.nextCursor;
-  }
 }
 
 async function cmdBoard(config: Config, args: string[]): Promise<void> {
@@ -376,7 +365,7 @@ async function cmdHealth(config: Config, args: string[]): Promise<void> {
 
   if (values.tatum) {
     const client = tatumClient(config);
-    console.log(`Tatum Sui RPC        ok (latest checkpoint ${await client.getLatestCheckpoint()})`);
+    console.log(`Tatum Sui GraphQL    ok (latest checkpoint ${await client.getLatestCheckpoint()})`);
   }
 }
 

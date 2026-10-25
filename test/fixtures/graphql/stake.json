@@ -1,0 +1,96 @@
+{
+  "source": "synthetic",
+  "note": "The synthetic stake (../synthetic-stake.json) as a Sui GraphQL transaction node: proto JSON for data and effects, typed pure inputs and events, full-length type addresses.",
+  "wallet": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "node": {
+    "digest": "SyntheticStake444444444444444444444444444",
+    "transactionJson": {
+      "digest": "SyntheticStake444444444444444444444444444",
+      "kind": {
+        "kind": "PROGRAMMABLE_TRANSACTION",
+        "programmableTransaction": {
+          "inputs": [
+            { "kind": "SHARED", "objectId": "0x0000000000000000000000000000000000000000000000000000000000000005", "version": "1", "mutable": true },
+            { "kind": "PURE", "pure": "AMqaOwAAAAA=" },
+            { "kind": "PURE", "pure": "mZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZk=" }
+          ],
+          "commands": [
+            { "splitCoins": { "coin": { "kind": "GAS" }, "amounts": [{ "kind": "INPUT", "input": 1 }] } },
+            {
+              "moveCall": {
+                "package": "0x0000000000000000000000000000000000000000000000000000000000000003",
+                "module": "sui_system",
+                "function": "request_add_stake",
+                "arguments": [
+                  { "kind": "INPUT", "input": 0 },
+                  { "kind": "RESULT", "result": 0, "subresult": 0 },
+                  { "kind": "INPUT", "input": 2 }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gasPayment": { "owner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "price": "1000", "budget": "50000000" }
+    },
+    "kind": {
+      "inputs": {
+        "nodes": [
+          {},
+          { "type": { "repr": "u64" }, "json": "1000000000" },
+          { "type": { "repr": "address" }, "json": "0x9999999999999999999999999999999999999999999999999999999999999999" }
+        ]
+      }
+    },
+    "effects": {
+      "status": "SUCCESS",
+      "timestamp": "2025-10-21T10:00:00.000Z",
+      "checkpoint": { "sequenceNumber": 200000000 },
+      "executionError": null,
+      "effectsJson": {
+        "status": { "success": true },
+        "gasUsed": { "computationCost": "1000000", "storageCost": "15000000", "storageRebate": "13000000", "nonRefundableStorageFee": "130000" },
+        "changedObjects": [
+          {
+            "objectId": "0x0000000000000000000000000000000000000000000000000000000000000005",
+            "inputState": "INPUT_OBJECT_STATE_EXISTS",
+            "inputOwner": { "kind": "SHARED", "version": "1" },
+            "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+            "outputOwner": { "kind": "SHARED", "version": "1" },
+            "idOperation": "NONE",
+            "objectType": "0x0000000000000000000000000000000000000000000000000000000000000003::sui_system::SuiSystemState"
+          },
+          {
+            "objectId": "0x0000000000000000000000000000000000000000000000000000000000000003",
+            "inputState": "INPUT_OBJECT_STATE_DOES_NOT_EXIST",
+            "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+            "outputOwner": { "kind": "ADDRESS", "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            "idOperation": "CREATED",
+            "objectType": "0x0000000000000000000000000000000000000000000000000000000000000003::staking_pool::StakedSui"
+          }
+        ]
+      },
+      "balanceChangesJson": [
+        {
+          "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "coinType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+          "amount": "-1003000000"
+        }
+      ],
+      "events": {
+        "nodes": [
+          {
+            "sequenceNumber": 0,
+            "sender": { "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            "transactionModule": { "name": "sui_system", "package": { "address": "0x0000000000000000000000000000000000000000000000000000000000000003" } },
+            "contents": {
+              "type": { "repr": "0x0000000000000000000000000000000000000000000000000000000000000003::validator::StakingRequestEvent" },
+              "json": { "amount": "1000000000", "validator_address": "0x9999999999999999999999999999999999999999999999999999999999999999" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

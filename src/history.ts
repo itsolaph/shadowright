@@ -105,12 +105,43 @@ async function fetchLatest(
   }
 }
 
+/** Newest-first pages (50 digests each) scanned for the last processed transaction. */
+const WATCH_SCAN_PAGES = 4;
+
+/**
+ * Digests of the wallet's own transactions newer than `afterDigest`, oldest first (live mode).
+ * GraphQL cursors are opaque, so the watch state keeps the last processed digest and the
+ * newest transactions are read backwards until it shows up: one call per poll, usually.
+ */
+export async function ownDigestsAfter(client: TatumSuiClient, wallet: string, afterDigest: string | null): Promise<string[]> {
+  const digests: string[] = [];
+  let cursor: string | null = null;
+  for (let page = 1; page <= WATCH_SCAN_PAGES; page++) {
+    const result = await client.queryTransactionBlocks({ FromAddress: wallet }, cursor, PAGE_SIZE, {
+      descending: true,
+      digestsOnly: true,
+      noCache: true,
+    });
+    for (const tx of result.data) {
+      if (tx.digest === afterDigest) return digests.reverse();
+      digests.push(tx.digest);
+    }
+    // The whole indexed history was read: all of it is newer than the last processed transaction.
+    if (!result.hasNextPage || !result.nextCursor) return digests.reverse();
+    cursor = result.nextCursor;
+  }
+  if (afterDigest === null) return digests.reverse();
+  throw new Error(
+    `The last processed transaction is not among the newest ${digests.length}. Remove the subject's watch.json to start watching from now.`,
+  );
+}
+
 /** Extra calls one page may spend recovering readable transactions (2 credits each). */
 const RECOVERY_CALLS_PER_PAGE = 8;
 
 /**
- * One page of transactions with details. Some transactions can no longer be rendered by the
- * node ("effect is empty"), which fails the whole page; then the page is read as digests and
+ * One page of transactions with details. Some transactions cannot be rendered by the service
+ * (a GraphQL error for one of them fails the whole page); then the page is read as digests and
  * fetched in halves, dropping the unreadable transactions. Recovery is capped per page: when
  * many transactions are unreadable, the parts it cannot afford to split are dropped too.
  */
@@ -144,7 +175,7 @@ async function fetchReadable(client: TatumSuiClient, digests: string[], budget: 
   }
 }
 
-/** A JSON-RPC error from the node itself (negative code), as opposed to HTTP or network failures. */
+/** An error reported by the service itself (negative code), as opposed to HTTP or network failures. */
 function isNodeRejection(error: unknown): boolean {
   return error instanceof RpcError && error.code !== undefined && error.code < 0;
 }

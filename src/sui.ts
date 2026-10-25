@@ -1,6 +1,7 @@
 /**
- * The subset of Sui JSON-RPC response shapes Shadowright reads.
- * Fields are optional where the node may omit them depending on request options.
+ * The subset of Sui JSON-RPC response shapes Shadowright reads. Data now comes from Sui
+ * GraphQL, mapped into these shapes by `graphql.ts`; cached histories and fixtures keep them.
+ * Fields are optional where the source may omit them.
  */
 
 export const SUI_COIN_TYPE = '0x2::sui::SUI';
@@ -28,18 +29,23 @@ export interface SuiEvent {
 }
 
 export interface MoveCallCommand {
-  MoveCall: { package: string; module: string; function: string; type_arguments?: string[] };
+  MoveCall: { package: string; module: string; function: string; type_arguments?: string[]; arguments?: unknown[] };
 }
 
 /** One PTB command: `{ MoveCall: ... }`, `{ TransferObjects: ... }`, `{ SplitCoins: ... }`, etc. */
 export type PtbCommand = MoveCallCommand | Record<string, unknown>;
 
 export interface PtbInput {
-  type: 'pure' | 'object';
+  type: 'pure' | 'object' | string;
   valueType?: string;
   value?: unknown;
+  /** For object inputs: `immOrOwnedObject`, `sharedObject` or `receiving`. */
   objectType?: string;
   objectId?: string;
+  version?: string;
+  digest?: string;
+  initialSharedVersion?: string;
+  mutable?: boolean;
 }
 
 export interface TransactionKind {
@@ -55,6 +61,7 @@ export interface ObjectChange {
   recipient?: Owner;
   objectType?: string;
   objectId?: string;
+  packageId?: string;
 }
 
 export interface GasCostSummary {
@@ -116,6 +123,12 @@ export interface CoinObject {
   version: string;
   digest: string;
   balance: string;
+}
+
+/** The parts of a simulated transaction that a dry-run reports. */
+export interface DryRunResponse {
+  effects?: { status: { status: 'success' | 'failure'; error?: string } };
+  balanceChanges?: BalanceChange[];
 }
 
 export function isMoveCall(command: PtbCommand): command is MoveCallCommand {

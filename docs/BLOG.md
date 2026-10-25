@@ -26,21 +26,22 @@ because acting on a false prediction would hurt just as much.
 
 ## Tatum is the agent's eyes
 
-Everything the agent sees on chain comes through Tatum's Sui mainnet RPC gateway. Backfilling a
-wallet's history is a paginated `suix_queryTransactionBlocks` call with inputs, effects, events
-and balance changes:
+Everything the agent sees on chain comes through Tatum's Sui mainnet GraphQL RPC. Backfilling a
+wallet's history is a paginated `transactions(filter: { sentAddress })` query with inputs,
+effects, events and balance changes, mapped into the transaction shape the rest of the code reads:
 
 ```ts
 queryTransactionBlocks(filter, cursor, limit = 50, options = {}) {
-  const responseOptions = options.digestsOnly ? {} : FULL_TRANSACTION;
-  return this.call('suix_queryTransactionBlocks',
-    [{ filter, options: responseOptions }, cursor, limit, options.descending ?? false], options);
+  const descending = options.descending ?? false;
+  const variables = { filter: transactionFilter(filter), ...pageVariables(cursor, limit, descending) };
+  return this.query('transactions', QUERIES.transactions, variables,
+    (data) => toPage(data.transactions, descending, toTransactionBlock), options);
 }
 ```
 
 In live mode we ask for digests only, which is cheap, and read the new transaction with
-`sui_multiGetTransactionBlocks` only *after* the prediction for it has been stored. Events
-(`suix_queryEvents`) help us find wallets to learn from, and `sui_dryRunTransactionBlock`
+`multiGetTransactions` only *after* the prediction for it has been stored. Events
+(`events(filter: { type })`) help us find wallets to learn from, and `simulateTransaction`
 simulates what a licensed agent would have done.
 
 Each call costs 2 credits, so the client throttles itself, retries with backoff, caches stable
@@ -122,7 +123,7 @@ making them.
 
 Shadowright never holds a key for the wallet it learns from. It cannot sign and it cannot send.
 The only thing it writes is its own memories. When a category is licensed, it rebuilds the
-equivalent transaction and runs `sui_dryRunTransactionBlock` through Tatum, which needs no
+equivalent transaction and runs `simulateTransaction` through Tatum, which needs no
 signature. On our demo wallet that dry run returned `InsufficientCoinBalance`, because the user
 had already sent the SUI on. That is the check doing its job. For actions we have no builder for
 yet, the agent says it would ask the user to sign.

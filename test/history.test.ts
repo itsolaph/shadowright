@@ -1,8 +1,49 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { actionOf, amountBucket, compareActions, describeAction, timeContext } from '../src/action.ts';
-import { fallbackCoinInfo, toDecision } from '../src/history.ts';
+import { fallbackCoinInfo, ownDigestsAfter, toDecision } from '../src/history.ts';
+import type { Page, SuiTransactionBlock } from '../src/sui.ts';
+import type { TatumSuiClient } from '../src/tatum.ts';
 import { action, fixture } from './helpers.ts';
+
+/** A client whose newest-first digest pages are `pages`, linked by cursors `c1`, `c2`, ... */
+function pagedClient(pages: string[][]) {
+  const cursors: Array<string | null> = [];
+  const client = {
+    queryTransactionBlocks: async (_filter: unknown, cursor: string | null): Promise<Page<SuiTransactionBlock>> => {
+      cursors.push(cursor);
+      const index = cursor === null ? 0 : Number(cursor.slice(1));
+      const hasNextPage = index + 1 < pages.length;
+      return { data: (pages[index] ?? []).map((digest) => ({ digest })), nextCursor: hasNextPage ? `c${index + 1}` : null, hasNextPage };
+    },
+  } as unknown as TatumSuiClient;
+  return { client, cursors };
+}
+
+describe('ownDigestsAfter', () => {
+  it('returns the transactions newer than the last processed one, oldest first', async () => {
+    const { client, cursors } = pagedClient([['d5', 'd4'], ['d3', 'd2'], ['d1']]);
+    assert.deepEqual(await ownDigestsAfter(client, '0xaa', 'd3'), ['d4', 'd5']);
+    assert.deepEqual(cursors, [null, 'c1']);
+  });
+
+  it('reads one page when nothing is new', async () => {
+    const { client, cursors } = pagedClient([['d5', 'd4']]);
+    assert.deepEqual(await ownDigestsAfter(client, '0xaa', 'd5'), []);
+    assert.equal(cursors.length, 1);
+  });
+
+  it('treats the whole indexed history as new when the last processed one is older', async () => {
+    const { client } = pagedClient([['d5', 'd4'], ['d3']]);
+    assert.deepEqual(await ownDigestsAfter(client, '0xaa', 'gone'), ['d3', 'd4', 'd5']);
+  });
+
+  it('stops instead of shadowing hundreds of transactions at once', async () => {
+    const page = (n: number) => Array.from({ length: 50 }, (_, i) => `p${n}-${i}`);
+    const { client } = pagedClient([page(0), page(1), page(2), page(3), page(4)]);
+    await assert.rejects(ownDigestsAfter(client, '0xaa', 'gone'), /not among the newest 200/);
+  });
+});
 
 const B = `0x${'b'.repeat(64)}`;
 const USDC = `0x${'1'.repeat(64)}::usdc::USDC`;

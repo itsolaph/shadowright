@@ -5,6 +5,40 @@ address, no local paths: only counts, accuracy and Walrus Memory job / blob ids.
 demo subject is "a public mainnet wallet (address in demo config)": its address lives only in the
 git-ignored `data/subjects.json`.
 
+## Tatum Sui GraphQL migration
+
+Status: **done** (2026-10-25, read-only). Tatum retired Sui JSON-RPC (every call returned HTTP 404);
+its Sui gateway now serves only GraphQL at `https://sui-mainnet.gateway.tatum.io/graphql`. The
+client (`src/tatum.ts`) now sends GraphQL queries, and `src/graphql.ts` maps the results into the
+JSON-RPC response shapes the rest of the code reads. No memories were written.
+
+- Schema introspected live before writing queries. Service limits: 300 query nodes, 5,000-byte
+  queries, pages of at most 50, 200 keys per multi-get. Filtered queries (`sentAddress`,
+  `affectedAddress`, event `type`) reach back to checkpoint 303,735,284 (2026-07-27, about 90
+  days); transactions by digest are older (the demo subject's oldest cached one is from 2026-01-26).
+- `health --tatum`: Walrus Memory relayer 0.1.0 ok, Tatum Sui GraphQL ok (latest checkpoint
+  337,952,639).
+- Classification check: a fresh newest-first page of 50 own transactions of the demo subject via
+  GraphQL, compared with the cached JSON-RPC copies of the same transactions. All 40 present in
+  both have the same category, rule and venue (transfer, stake, claim, defi and swap), and their
+  normalised decisions are identical (coins, amounts, gas, counterparties, calls). Remaining raw
+  differences have no effect on classification: GraphQL also lists deleted coin objects, which the
+  JSON-RPC replies left out, event JSON keys come in a different order, funds-withdrawal inputs
+  carry no detail, and one pure input is typed `Option<address>` where JSON-RPC guessed
+  `vector<address>`.
+- Other read paths checked live: stake events (two newest-first pages joined by an opaque cursor,
+  6 distinct events), `affectedAddress` pages (two oldest-first pages, no overlap), multi-get by
+  digest (an unknown digest is left out), coin metadata (USDC: 6 decimals), reference gas price
+  (100), live-mode detection (10 own transactions newer than the last cached one).
+- Dry-run via `simulateTransaction` of a past SUI transfer: rejected before execution ("Balance of
+  gas object 0 is lower than the needed amount: 50000000"). The subject's SUI is now held as an
+  address balance rather than coin objects; the dry-run reports this as a failure instead of
+  stopping live mode.
+- `board`: 80 memories recalled from Walrus Memory, stake LICENSED 8/10, unchanged.
+- Tatum usage: 22 calls (~44 credits) in total, including schema introspection and the
+  comparison scripts; only the CLI call is in the running total (~4,562 credits).
+- Tests: 132 pass, typecheck clean.
+
 ## Milestone 3: presentation (screenshots, video, blog)
 
 Status: **done**. Live runs for the README screenshots and the demo video, with

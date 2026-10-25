@@ -1,11 +1,29 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  eventFilter,
+  pageVariables,
+  QUERIES,
+  toCoinMetadata,
+  toCoinObject,
+  toDryRun,
+  toEventEnvelope,
+  toPage,
+  toTransactionBlock,
+  transactionFilter,
+  type GqlCoin,
+  type GqlCoinMetadata,
+  type GqlConnection,
+  type GqlEvent,
+  type GqlSimulation,
+  type GqlTransaction,
+} from './graphql.ts';
 import type {
   CoinMetadata,
   CoinObject,
+  DryRunResponse,
   EventFilter,
-  EventId,
   Page,
   SuiEventEnvelope,
   SuiTransactionBlock,
@@ -96,6 +114,13 @@ export class DiskCache {
   }
 }
 
+/**
+ * Code given to errors the GraphQL service reports in a successful HTTP reply (a query it
+ * cannot answer), so callers can tell them from HTTP and network failures, as with the
+ * negative codes of JSON-RPC errors.
+ */
+export const GRAPHQL_ERROR_CODE = -32000;
+
 export class RpcError extends Error {
   readonly code: number | undefined;
 
@@ -107,6 +132,7 @@ export class RpcError extends Error {
 }
 
 export interface TatumClientOptions {
+  /** Tatum's Sui GraphQL endpoint; `/graphql` is appended to a bare gateway URL. */
   url: string;
   apiKey: string;
   /** Directory for the response cache. Omit to disable caching. */
@@ -123,7 +149,7 @@ export interface TatumClientOptions {
 }
 
 export interface CallOptions {
-  /** Decide from the result whether it is safe to cache (default: always). */
+  /** Decide from the (mapped) result whether it is safe to cache (default: always). */
   cacheIf?: (result: unknown) => boolean;
   /** Skip the cache entirely for this call (for live values such as the latest checkpoint). */
   noCache?: boolean;
@@ -136,27 +162,35 @@ export interface QueryOptions extends CallOptions {
   digestsOnly?: boolean;
 }
 
-const FULL_TRANSACTION = {
-  showInput: true,
-  showEffects: true,
-  showEvents: true,
-  showBalanceChanges: true,
-  showObjectChanges: true,
-};
-
 export interface UsageStats {
   networkCalls: number;
   cacheHits: number;
   retries: number;
 }
 
-/** Each Tatum RPC call costs 2 credits on the free plan. */
+/**
+ * Credits per Tatum request on the free plan. Tatum documents no separate price for GraphQL
+ * requests, so the JSON-RPC price is kept: one GraphQL query is one request.
+ */
 export const CREDITS_PER_CALL = 2;
 
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 /**
- * Throttled, cached, retrying JSON-RPC client for the Tatum Sui gateway.
+ * Prefix of every cache key. GraphQL results are cached raw, under keys that can never
+ * collide with the JSON-RPC responses cached in the same directory before.
+ */
+const CACHE_PREFIX = 'gql:';
+
+/** `https://sui-mainnet.gateway.tatum.io` -> `https://sui-mainnet.gateway.tatum.io/graphql`. */
+export function graphqlUrl(url: string): string {
+  const trimmed = url.replace(/\/+$/, '');
+  return trimmed.endsWith('/graphql') ? trimmed : `${trimmed}/graphql`;
+}
+
+/**
+ * Throttled, cached, retrying client for Tatum's Sui GraphQL gateway. Its methods keep the
+ * names and the JSON-RPC result shapes of the methods they replace (see `graphql.ts`).
  * The API key is only ever placed in the request header; it never appears in errors or logs.
  */
 export class TatumSuiClient {
@@ -170,10 +204,9 @@ export class TatumSuiClient {
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
-  private nextId = 1;
 
   constructor(options: TatumClientOptions) {
-    this.url = options.url;
+    this.url = graphqlUrl(options.url);
     this.apiKey = options.apiKey;
     this.cache = options.cacheDir ? new DiskCache(options.cacheDir) : undefined;
     this.bucket = options.bucket ?? new TokenBucket(options.ratePerSecond ?? 2.5);
@@ -184,19 +217,30 @@ export class TatumSuiClient {
     this.sleep = options.sleep ?? delay;
   }
 
-  async call<T>(method: string, params: unknown[], options: CallOptions = {}): Promise<T> {
-    const key = DiskCache.keyOf(method, params);
+  /**
+   * Runs one GraphQL query. The raw `data` is cached; `map` turns it into the result, and
+   * `cacheIf` sees the mapped result. `name` labels errors and the cache key.
+   */
+  async query<D, R>(
+    name: string,
+    query: string,
+    variables: Record<string, unknown>,
+    map: (data: D) => R,
+    options: CallOptions = {},
+  ): Promise<R> {
+    const key = DiskCache.keyOf(`${CACHE_PREFIX}${name}`, { query, variables });
     if (this.cache && !options.noCache) {
-      const cached = await this.cache.get<T>(key);
+      const cached = await this.cache.get<D>(key);
       if (cached !== undefined) {
         this.stats.cacheHits += 1;
-        return cached;
+        return map(cached);
       }
     }
 
-    const result = await this.send<T>(method, params);
+    const data = await this.send<D>(name, query, variables);
+    const result = map(data);
     if (this.cache && !options.noCache && (options.cacheIf?.(result) ?? true)) {
-      await this.cache.set(key, result);
+      await this.cache.set(key, data);
     }
     return result;
   }
@@ -205,6 +249,7 @@ export class TatumSuiClient {
    * Oldest first by default: every full page is then stable, so only the open last page is
    * ever refetched. `descending` reads the newest transactions first (used to sample recent
    * activity); `digestsOnly` returns digests without details (used to detect new activity).
+   * `cursor` is an opaque GraphQL cursor taken from a previous page's `nextCursor`.
    */
   queryTransactionBlocks(
     filter: TransactionFilter,
@@ -212,36 +257,78 @@ export class TatumSuiClient {
     limit = 50,
     options: QueryOptions = {},
   ): Promise<Page<SuiTransactionBlock>> {
-    const responseOptions = options.digestsOnly ? {} : FULL_TRANSACTION;
-    return this.call(
-      'suix_queryTransactionBlocks',
-      [{ filter, options: responseOptions }, cursor, limit, options.descending ?? false],
+    const descending = options.descending ?? false;
+    const variables = { filter: transactionFilter(filter), ...pageVariables(cursor, limit, descending) };
+    if (options.digestsOnly) {
+      return this.query(
+        'transactionDigests',
+        QUERIES.transactionDigests,
+        variables,
+        (data: { transactions: GqlConnection<{ digest: string }> }) =>
+          toPage(data.transactions, descending, (node): SuiTransactionBlock => ({ digest: node.digest })),
+        options,
+      );
+    }
+    return this.query(
+      'transactions',
+      QUERIES.transactions,
+      variables,
+      (data: { transactions: GqlConnection<GqlTransaction> }) => toPage(data.transactions, descending, toTransactionBlock),
       options,
     );
   }
 
+  /** Transactions by digest, in the order given. Digests the service does not know are left out. */
   multiGetTransactionBlocks(digests: string[], options: CallOptions = {}): Promise<SuiTransactionBlock[]> {
-    return this.call('sui_multiGetTransactionBlocks', [digests, FULL_TRANSACTION], options);
+    return this.query(
+      'multiGetTransactions',
+      QUERIES.multiGetTransactions,
+      { keys: digests },
+      (data: { multiGetTransactions: Array<GqlTransaction | null> }) =>
+        data.multiGetTransactions.filter((tx): tx is GqlTransaction => tx !== null).map(toTransactionBlock),
+      options,
+    );
   }
 
-  queryEvents(filter: EventFilter, cursor: EventId | null, limit = 50, options: QueryOptions = {}): Promise<Page<SuiEventEnvelope, EventId>> {
-    return this.call('suix_queryEvents', [filter, cursor, limit, options.descending ?? false], options);
+  queryEvents(filter: EventFilter, cursor: string | null, limit = 50, options: QueryOptions = {}): Promise<Page<SuiEventEnvelope>> {
+    const descending = options.descending ?? false;
+    return this.query(
+      'events',
+      QUERIES.events,
+      { filter: eventFilter(filter), ...pageVariables(cursor, limit, descending) },
+      (data: { events: GqlConnection<GqlEvent> }) => toPage(data.events, descending, toEventEnvelope),
+      options,
+    );
   }
 
   getCoinMetadata(coinType: string): Promise<CoinMetadata | null> {
-    return this.call('suix_getCoinMetadata', [coinType]);
+    return this.query('coinMetadata', QUERIES.coinMetadata, { coinType }, (data: { coinMetadata: GqlCoinMetadata | null }) =>
+      toCoinMetadata(data.coinMetadata),
+    );
   }
 
+  /** Coin objects of one type owned by `owner` (balances held at the address itself are not coins). */
   getCoins(owner: string, coinType: string, limit = 10): Promise<Page<CoinObject>> {
-    return this.call('suix_getCoins', [owner, coinType, null, limit], { noCache: true });
+    return this.query(
+      'coins',
+      QUERIES.coins,
+      { owner, type: `0x2::coin::Coin<${coinType}>`, first: Math.min(limit, 50) },
+      (data: { address: { objects: GqlConnection<GqlCoin> | null } | null }) => {
+        const objects = data.address?.objects;
+        return objects ? toPage(objects, false, toCoinObject(coinType)) : { data: [], nextCursor: null, hasNextPage: false };
+      },
+      { noCache: true },
+    );
   }
 
   getReferenceGasPrice(): Promise<string> {
-    return this.call('suix_getReferenceGasPrice', [], { noCache: true });
+    const map = (data: { epoch: { referenceGasPrice: string } }) => String(data.epoch.referenceGasPrice);
+    return this.query('referenceGasPrice', QUERIES.referenceGasPrice, {}, map, { noCache: true });
   }
 
   getLatestCheckpoint(): Promise<string> {
-    return this.call('sui_getLatestCheckpointSequenceNumber', [], { noCache: true });
+    const map = (data: { checkpoint: { sequenceNumber: number } }) => String(data.checkpoint.sequenceNumber);
+    return this.query('latestCheckpoint', QUERIES.latestCheckpoint, {}, map, { noCache: true });
   }
 
   /** Credits spent by this client instance so far (cache hits are free). */
@@ -249,13 +336,22 @@ export class TatumSuiClient {
     return this.stats.networkCalls * CREDITS_PER_CALL;
   }
 
-  /** Simulates a transaction without executing it. Used before a licensed agent acts. */
-  dryRunTransactionBlock(txBytesBase64: string): Promise<unknown> {
-    return this.call('sui_dryRunTransactionBlock', [txBytesBase64], { noCache: true });
+  /**
+   * Simulates a transaction (BCS bytes, base64) without executing it, with GraphQL's
+   * `simulateTransaction`. Used before a licensed agent acts. Nothing is signed.
+   */
+  dryRunTransactionBlock(txBytesBase64: string): Promise<DryRunResponse> {
+    return this.query(
+      'simulateTransaction',
+      QUERIES.simulate,
+      { tx: { bcs: { value: txBytesBase64 } } },
+      (data: { simulateTransaction: GqlSimulation }) => toDryRun(data.simulateTransaction),
+      { noCache: true },
+    );
   }
 
-  private async send<T>(method: string, params: unknown[]): Promise<T> {
-    const body = JSON.stringify({ jsonrpc: '2.0', id: this.nextId++, method, params });
+  private async send<D>(name: string, query: string, variables: Record<string, unknown>): Promise<D> {
+    const body = JSON.stringify({ query, variables });
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
@@ -272,26 +368,31 @@ export class TatumSuiClient {
           signal: AbortSignal.timeout(this.timeoutMs),
         });
       } catch (error) {
-        lastError = new RpcError(`${method}: network error (${(error as Error).message})`);
+        lastError = new RpcError(`${name}: network error (${(error as Error).message})`);
         await this.sleep(this.backoff(attempt));
         continue;
       }
 
       if (RETRYABLE_STATUS.has(response.status)) {
-        lastError = new RpcError(`${method}: HTTP ${response.status}`, response.status);
+        lastError = new RpcError(`${name}: HTTP ${response.status}`, response.status);
         await this.sleep(retryAfterMs(response) ?? this.backoff(attempt));
         continue;
       }
       if (!response.ok) {
-        throw new RpcError(`${method}: HTTP ${response.status}`, response.status);
+        throw new RpcError(`${name}: HTTP ${response.status}`, response.status);
       }
 
-      const payload = (await response.json()) as { result?: T; error?: { code: number; message: string } };
-      if (payload.error) throw new RpcError(`${method}: ${payload.error.message}`, payload.error.code);
-      return payload.result as T;
+      const payload = (await response.json()) as { data?: D | null; errors?: Array<{ message?: string }> };
+      // Partial data next to errors is not trusted: it would be cached as if complete.
+      if (payload.errors?.length) {
+        const messages = payload.errors.map((error) => error.message ?? 'unknown error').slice(0, 3).join('; ');
+        throw new RpcError(`${name}: ${messages}`, GRAPHQL_ERROR_CODE);
+      }
+      if (payload.data === undefined || payload.data === null) throw new RpcError(`${name}: empty response`, GRAPHQL_ERROR_CODE);
+      return payload.data;
     }
 
-    throw lastError ?? new RpcError(`${method}: failed`);
+    throw lastError ?? new RpcError(`${name}: failed`);
   }
 
   private backoff(attempt: number): number {

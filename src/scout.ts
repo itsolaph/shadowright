@@ -1,6 +1,6 @@
 import { readablePage, toDecision } from './history.ts';
 import { normaliseAddress, shortAddress } from './subjects.ts';
-import type { EventFilter, EventId, Page, SuiEventEnvelope, SuiTransactionBlock } from './sui.ts';
+import type { EventFilter, Page, SuiEventEnvelope, SuiTransactionBlock } from './sui.ts';
 import type { TatumSuiClient } from './tatum.ts';
 import { CATEGORIES, type Category, type Decision } from './types.ts';
 
@@ -230,11 +230,11 @@ async function collectSeeds(
 ): Promise<Map<string, Set<string>>> {
   const seeds = new Map<string, Set<string>>();
   for (const source of sources) {
-    let cursor: EventId | null = null;
+    let cursor: string | null = null;
     let found = 0;
     try {
       for (let page = 0; page < pages; page++) {
-        const result: Page<SuiEventEnvelope, EventId> = await client.queryEvents(source.filter, cursor, PAGE_SIZE, { descending: true });
+        const result: Page<SuiEventEnvelope> = await client.queryEvents(source.filter, cursor, PAGE_SIZE, { descending: true });
         for (const event of result.data) {
           if (!event.sender) continue;
           const address = normaliseAddress(event.sender);

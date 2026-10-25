@@ -144,18 +144,25 @@ journals, so running them again continues where they stopped instead of writing 
 
 ## How Shadowright uses Tatum
 
-Tatum's Sui mainnet JSON-RPC gateway is the agent's eyes. Methods used:
+Tatum's Sui mainnet GraphQL RPC (`https://sui-mainnet.gateway.tatum.io/graphql`) is the agent's
+eyes. Queries used:
 
-| Method | Used for |
+| GraphQL query | Used for |
 | --- | --- |
-| `suix_queryEvents` | Scout seeds: recent native stake / unstake requests, Cetus swaps, DeepBook fills. |
-| `suix_queryTransactionBlocks` | Backfill and sampling (inputs, effects, events, balance and object changes); digests only for new-transaction detection in live mode. |
-| `sui_multiGetTransactionBlocks` | Read a new transaction once its prediction is stored; recover pages with transactions the node can no longer render. |
-| `suix_getCoinMetadata` | Coin symbols and decimals. |
-| `suix_getCoins`, `suix_getReferenceGasPrice`, `sui_dryRunTransactionBlock` | Simulate what a licensed agent would have done. No signature needed: nothing is signed or sent. |
-| `sui_getLatestCheckpointSequenceNumber` | Health check. |
+| `events(filter: { type })` | Scout seeds: recent native stake / unstake requests, Cetus swaps, DeepBook fills. |
+| `transactions(filter: { sentAddress \| affectedAddress })` | Backfill and sampling (inputs, effects, events, balance and object changes); digests only for new-transaction detection in live mode. |
+| `multiGetTransactions(keys)` | Read a new transaction once its prediction is stored; recover pages with transactions the service cannot render. |
+| `coinMetadata(coinType)` | Coin symbols and decimals. |
+| `address.objects(filter: { type: Coin<T> })`, `epoch.referenceGasPrice`, `simulateTransaction` | Simulate what a licensed agent would have done. No signature needed: nothing is signed or sent. |
+| `checkpoint.sequenceNumber` | Health check. |
 
-**Credit budget.** Each call costs 2 credits. The client (`src/tatum.ts`) is throttled to 2.5
+`src/graphql.ts` maps the results into the response shapes the code used with JSON-RPC (Tatum
+retired Sui JSON-RPC), so classification is unchanged: in a fresh page of 50 demo-wallet
+transactions, all 40 that were also cached from JSON-RPC classified identically. Filtered
+queries (`sentAddress`, `affectedAddress`, event `type`) reach back about 90 days; transactions
+by digest are available further back.
+
+**Credit budget.** Each call costs 2 credits (Tatum documents no separate price for GraphQL). The client (`src/tatum.ts`) is throttled to 2.5
 requests/s with a token bucket (the free plan allows 3), retries 429/5xx and stalled requests with
 exponential backoff, caches every stable response on disk (re-runs cost nothing), and keeps a
 running credit total in `data/tatum-usage.json`, even when a run is interrupted. All runs so far
@@ -200,7 +207,7 @@ be dropped in without touching the loop or the licence rules.
 - **Never signs, never sends.** There is no signing key for the subject wallet anywhere in the
   code. The only write path is Walrus Memory (the agent's own memories).
 - **Dry-run only.** When the predicted category is licensed, `watch` rebuilds the equivalent
-  transaction from the user's latest matching one and calls `sui_dryRunTransactionBlock`
+  transaction from the user's latest matching one and simulates it with `simulateTransaction`
   ("would have done X"). On the demo wallet the dry-run of a SUI transfer returned
   `InsufficientCoinBalance`, because the user had already sent the SUI on: the check working.
 - **Licences are fragile on purpose.** One wrong call in a licensed category revokes the licence.
@@ -221,7 +228,8 @@ be dropped in without touching the loop or the licence rules.
 
 | File | Role |
 | --- | --- |
-| `src/tatum.ts` | Throttled, cached, retrying Sui JSON-RPC client for Tatum |
+| `src/tatum.ts` | Throttled, cached, retrying Sui GraphQL client for Tatum |
+| `src/graphql.ts` | GraphQL queries and their mapping into JSON-RPC-shaped transactions |
 | `src/history.ts` | Backfill and normalise transactions into `Decision`s |
 | `src/classify.ts` | Rule-based category classifier (rules in priority order, each explains itself) |
 | `src/action.ts` | The comparable action (category, venue or recipient, coin, amount bucket) and time features |

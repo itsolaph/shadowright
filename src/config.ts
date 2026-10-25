@@ -20,7 +20,8 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     tatumApiKey: env.TATUM_API_KEY || undefined,
-    tatumRpcUrl: env.TATUM_RPC_URL || 'https://sui-mainnet.gateway.tatum.io',
+    // Tatum's Sui GraphQL endpoint (Tatum no longer serves Sui JSON-RPC).
+    tatumRpcUrl: env.TATUM_RPC_URL || 'https://sui-mainnet.gateway.tatum.io/graphql',
     memwalKey: env.MEMWAL_PRIVATE_KEY || undefined,
     memwalAccountId: env.MEMWAL_ACCOUNT_ID || undefined,
     memwalServerUrl: env.MEMWAL_SERVER_URL || 'https://relayer.memory.walrus.xyz',

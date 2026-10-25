@@ -11,7 +11,7 @@ flowchart TB
         chain[(Transactions,<br/>events, coins)]
     end
     subgraph Tatum
-        rpc[Sui JSON-RPC gateway]
+        rpc[Sui GraphQL RPC gateway]
     end
     subgraph Walrus
         memwal[Walrus Memory relayer]
@@ -20,7 +20,7 @@ flowchart TB
     chain --- rpc
     memwal --- blobs
 
-    tatum[tatum.ts<br/>throttle, retry, disk cache,<br/>credit counter] --> rpc
+    tatum[tatum.ts + graphql.ts<br/>throttle, retry, disk cache,<br/>credit counter, GraphQL mapping] --> rpc
     history[history.ts + classify.ts + action.ts<br/>transaction -> Decision -> Action]
     scout[scout.ts<br/>find diverse human wallets]
     memory[memory.ts<br/>memory text format,<br/>remember / recall / restore]
@@ -28,7 +28,7 @@ flowchart TB
     licence[licence.ts<br/>per-category state machine]
     replay[replay.ts<br/>history in order]
     watch[watch.ts<br/>live, predict before read]
-    dryrun[dryrun.ts<br/>rebuild + sui_dryRunTransactionBlock]
+    dryrun[dryrun.ts<br/>rebuild + simulateTransaction]
     board[boardview.ts<br/>cards, curve, events, timeline]
     cli[cli.ts]
     web[web.ts + web/]
@@ -82,7 +82,7 @@ flowchart TB
 | Walrus Memory, namespace `shadowright-v1:<8 hex>` | Every episode (the agent's knowledge) | Itself: `restore` re-indexes from Walrus |
 | `data/subjects.json` (git-ignored) | Subject names, addresses, default | The scout or the user |
 | `data/subjects/<name>/` (git-ignored) | Backfilled history, journal of stored episodes, live-mode cursor | Tatum + Walrus Memory |
-| `data/cache/` (git-ignored) | Stable Tatum responses | Tatum |
+| `data/cache/` (git-ignored) | Stable Tatum responses (GraphQL keys prefixed `gql:`; older JSON-RPC entries are never read) | Tatum |
 | `data/tatum-usage.json` (git-ignored) | Running credit total | - |
 
 The board (`boardview.ts`) is computed from recalled memories only: licences are replayed from
@@ -93,6 +93,6 @@ namespace from Walrus shows exactly the same board.
 
 `npm test` runs the Node test runner over `test/*.test.ts`: classifier fixtures (one per
 category), the licence state machine, memory format round-trips, predictors, replay and live mode
-against the SDK's in-process `MemWalMock`, the Tatum client against a stubbed `fetch`, dry-run
-helpers, scout filters, subjects and address masking. `npm run typecheck` runs `tsc --noEmit`.
+against the SDK's in-process `MemWalMock`, the Tatum client against a stubbed `fetch`, the
+GraphQL-to-JSON-RPC mapping against a GraphQL copy of a fixture, dry-run helpers, scout filters, subjects and address masking. `npm run typecheck` runs `tsc --noEmit`.
 No test touches the network.
