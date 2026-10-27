@@ -241,7 +241,7 @@ async function restore() {
     const view = await api(`/api/restore?${new URLSearchParams({ subject: subjectSelect.value })}`, { method: 'POST' });
     render(view);
     const r = view.restore;
-    setStatus(`Restored from Walrus in a fresh client: ${r.restored} re-indexed, ${r.skipped} already indexed, ${r.total} on chain. Board rebuilt from ${view.memories} recalled memories.`);
+    setStatus(`Rebuilt in a fresh Walrus Memory client from ${view.memories} recalled memories. Index check: ${r.restored ? `${r.restored} missing blobs re-indexed` : 'nothing missing'}${r.failed ? `, ${r.failed} unreadable` : ''}.`);
   } finally {
     button.disabled = false;
   }

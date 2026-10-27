@@ -155,6 +155,11 @@ session opened with a vault top-up instead of a claim.
   memories and 31 correct, identical. The relayer's restore call reported 21 blobs for the
   namespace, all already indexed (`truncated: false`); its candidate list is capped per owner, as
   the SDK documents, while recall returned all 80.
+- 2026-10-27: with 90 memories the relayer's restore page now lists only 1 blob for the demo
+  namespace (0 for `shadowright-v1`), while `listNamespaces` reports 90 and 12 and recall returns
+  all of them. Same per-owner candidate cap, shared across namespaces, with no cursor (SDK 0.1.10
+  unchanged). The board's restore message now reports the recalled count and whether anything
+  was missing, not the relayer's page size.
 
 ### Operations
 
