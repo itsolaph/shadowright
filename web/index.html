@@ -3,21 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Shadowright · Licence Board</title>
+    <title>Shadowright licence board</title>
+    <meta name="description" content="Shadowright licence board: how often a wallet agent guessed its owner's next Sui move, per decision category, recalled from Walrus Memory." />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header class="top">
       <div class="brand">
         <h1>Shadowright</h1>
-        <p class="tagline">A learner's permit for your wallet agent</p>
+        <p class="tagline">A learner’s permit for your wallet agent</p>
       </div>
       <div class="controls">
         <label class="field">
           <span>Subject</span>
           <select id="subject"></select>
         </label>
-        <button id="refresh" type="button">Refresh</button>
+        <button id="refresh" type="button" class="quiet">Refresh</button>
         <button id="restore" type="button" class="primary" title="Rebuild this board in a fresh Walrus Memory client, from Walrus only">
           Restore from Walrus
         </button>
@@ -31,10 +32,11 @@
 
       <section aria-labelledby="licences-title">
         <h2 id="licences-title">Licences per decision category</h2>
-        <p class="hint">
-          5 memories unlock judging · at least 80% correct over the last 10 grants a licence · one miss while licensed
-          revokes it · 3 correct calls in a row end probation.
-        </p>
+        <ul class="hint rules">
+          <li>A category is judged once it has 5 memories.</li>
+          <li>At least 80% correct over the last 10 calls grants a licence.</li>
+          <li>One miss while licensed revokes it, then 3 correct calls in a row end probation.</li>
+        </ul>
         <div class="cards" id="cards"></div>
       </section>
 

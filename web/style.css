@@ -1,3 +1,5 @@
+/* Hallmark · audit fixes on the existing board; layout, palette and type kept so it still matches the demo video */
+/* Hallmark · pre-emit critique: floor-only pass · weakest: type, still the system face; kept on purpose so the video and repo agree */
 :root {
   color-scheme: dark;
   --page: #0d0d0d;
@@ -13,7 +15,12 @@
   --series-2: #d95926;
   --good: #0ca30c;
   --warning: #fab219;
-  --critical: #d03b3b;
+  --critical: #e46464;
+  --accent: #2a66b8;
+  --accent-press: #22579e;
+  --on-accent: #f4f3ef;
+  --press: #2a2a28;
+  --shadow: rgba(0, 0, 0, 0.4);
   --radius: 10px;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--page);
@@ -22,6 +29,11 @@
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: clip;
 }
 
 body {
@@ -49,15 +61,35 @@ select:hover {
   border-color: var(--muted);
 }
 
-button:disabled {
-  opacity: 0.5;
+button:active,
+select:active {
+  background: var(--press);
+}
+
+button.quiet {
+  background: transparent;
+}
+
+button.quiet:active {
+  background: var(--press);
+}
+
+button:disabled,
+button.primary:disabled {
+  background: var(--surface);
+  border-color: var(--grid);
+  color: var(--muted);
   cursor: progress;
 }
 
 button.primary {
-  background: var(--series-1);
-  border-color: var(--series-1);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+button.primary:active {
+  background: var(--accent-press);
 }
 
 :focus-visible {
@@ -78,7 +110,12 @@ button.primary {
 .brand h1 {
   margin: 0;
   font-size: 1.6rem;
-  letter-spacing: 0.01em;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
 }
 
 .tagline {
@@ -108,6 +145,12 @@ main {
 h2 {
   font-size: 1.1rem;
   margin: 2rem 0 0.25rem;
+}
+
+.rules {
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.15rem;
 }
 
 .hint {
@@ -162,6 +205,7 @@ h2 {
 
 .card {
   background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--ring);
   border-radius: var(--radius);
   padding: 1rem;
@@ -313,7 +357,7 @@ h2 {
   font-size: 0.8rem;
   color: var(--ink);
   white-space: nowrap;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px var(--shadow);
 }
 
 .tooltip[hidden] {
@@ -336,6 +380,17 @@ h2 {
   padding: 0.55rem 0.8rem;
   font-size: 0.9rem;
   color: var(--ink-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
+.events strong {
+  color: var(--ink);
+}
+
+.events .reason {
+  color: var(--muted);
 }
 
 .events time,
@@ -347,20 +402,11 @@ h2 {
 .memory {
   background: var(--surface);
   border: 1px solid var(--ring);
-  border-left: 3px solid var(--axis);
   border-radius: 8px;
   padding: 0.75rem 0.9rem;
   display: grid;
   gap: 0.3rem;
   font-size: 0.9rem;
-}
-
-.memory.correct {
-  border-left-color: var(--good);
-}
-
-.memory.wrong {
-  border-left-color: var(--critical);
 }
 
 .memory .head {

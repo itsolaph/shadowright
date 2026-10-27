@@ -1,6 +1,6 @@
 // Licence Board front end: plain DOM, no dependencies. All text goes through textContent.
 
-const STATE_ICON = { LOCKED: '🔒', SHADOWING: '👀', LICENSED: '✅' };
+const STATE_NAME = { LOCKED: 'Locked', SHADOWING: 'Shadowing', LICENSED: 'Licensed' };
 const LICENCE_THRESHOLD = 0.8;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -68,14 +68,15 @@ function renderCards(view) {
       return h(
         'article',
         { class: `card ${card.state.toLowerCase()}` },
-        h('header', {}, h('h3', {}, card.label), h('span', { class: `badge ${card.state}` }, `${STATE_ICON[card.state]} ${card.state}`)),
+        h('header', {}, h('h3', {}, card.label), h('span', { class: `badge ${card.state}` }, STATE_NAME[card.state])),
         h('div', { class: 'metric' }, 'Accuracy, last 10', h('strong', {}, card.recent.length ? `${pct(card.accuracy)} (${card.recent.filter(Boolean).length}/${card.recent.length})` : '–')),
         card.recent.length ? dots : null,
         h('div', { class: 'metric' }, 'Memories', h('strong', {}, String(card.memories))),
-        h('div', { class: 'metric' }, 'Streak · revoked', h('strong', {}, `${card.streak} · ${card.revocations}`)),
+        h('div', { class: 'metric' }, 'Correct in a row', h('strong', {}, String(card.streak))),
+        h('div', { class: 'metric' }, 'Times revoked', h('strong', {}, String(card.revocations))),
         bar,
         h('p', { class: 'needed' }, card.onProbation ? `On probation: ${card.needed}` : card.needed),
-        card.lastRevokeReason ? h('p', { class: 'revoke' }, `Last revoke: ${card.lastRevokeReason}`) : null,
+        card.lastRevokeReason ? h('p', { class: 'revoke' }, `Last revoke: ${card.lastRevokeReason.replace(/^revoked:\s*/, '')}`) : null,
       );
     }),
   );
@@ -149,8 +150,9 @@ function renderCurve(view) {
       markers[i].setAttribute('visibility', 'visible');
     });
     tooltip.replaceChildren(
-      h('div', {}, h('strong', {}, `Memory #${p.index}`), ` · ${p.correct ? '✓ correct' : '✗ wrong'}`),
-      h('div', {}, `Last 10: ${pct(p.rolling)} · all: ${pct(p.cumulative)}`),
+      h('div', {}, h('strong', {}, `Memory #${p.index}`), `, ${p.correct ? 'correct' : 'wrong'}`),
+      h('div', {}, `Last 10: ${pct(p.rolling)}`),
+      h('div', {}, `All so far: ${pct(p.cumulative)}`),
       h('div', { style: 'color:var(--muted)' }, when(p.timestampMs)),
     );
     tooltip.hidden = false;
@@ -172,7 +174,7 @@ function renderEvents(view) {
   const events = [...view.events].reverse();
   $('events').replaceChildren(
     ...(events.length
-      ? events.map((e) => h('li', {}, h('time', {}, when(e.timestampMs)), ` · ${e.category}: ${STATE_ICON[e.from]} ${e.from} → ${STATE_ICON[e.to]} ${e.to} (${e.reason})`))
+      ? events.map((e) => h('li', {}, h('time', {}, when(e.timestampMs)), h('strong', {}, e.category), h('span', {}, `${STATE_NAME[e.from]} to ${STATE_NAME[e.to]}`), h('span', { class: 'reason' }, e.reason)))
       : [h('li', {}, 'No licence changes yet.')]),
   );
 }
@@ -197,7 +199,7 @@ function renderTimeline(view) {
         h(
           'div',
           { class: 'head' },
-          h('span', { class: 'verdict' }, m.correct ? '✓ correct' : `✗ wrong (${m.misses.join(', ')})`),
+          h('span', { class: 'verdict' }, m.correct ? 'Correct' : `Wrong: ${m.misses.join(', ')}`),
           h('span', { class: 'tag' }, m.category),
           m.predictedAtMs ? h('span', { class: 'tag', title: `predicted ${when(m.predictedAtMs)}, before the transaction was read` }, 'live') : null,
           h('time', {}, when(m.timestampMs)),
@@ -247,7 +249,7 @@ async function restore() {
 
 async function start() {
   const subjects = await api('/api/subjects');
-  subjectSelect.replaceChildren(...subjects.map((s) => h('option', { value: s.name }, `${s.name} · ${s.short}…`)));
+  subjectSelect.replaceChildren(...subjects.map((s) => h('option', { value: s.name }, `${s.name} (${s.short}…)`)));
   const preferred = new URLSearchParams(location.search).get('subject') ?? subjects.find((s) => s.isDefault)?.name;
   if (preferred) subjectSelect.value = preferred;
   await load();

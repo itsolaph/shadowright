@@ -33,9 +33,9 @@ flowchart LR
 
 | State | Meaning |
 | --- | --- |
-| 🔒 `LOCKED` | Fewer than 5 memories in this category. The agent only watches. |
-| 👀 `SHADOWING` | The agent predicts privately, but is not accurate enough yet (or is on probation). |
-| ✅ `LICENSED` | At least 80% correct over the last 10 memories. The agent may act alone, dry-run first. |
+| `LOCKED` | Fewer than 5 memories in this category. The agent only watches. |
+| `SHADOWING` | The agent predicts privately, but is not accurate enough yet (or is on probation). |
+| `LICENSED` | At least 80% correct over the last 10 memories. The agent may act alone, dry-run first. |
 
 A prediction is correct only if the kind of action, the venue (or recipient) and the coin all
 match; the amount is reported but not required. A wrong prediction counts against both the
@@ -65,7 +65,7 @@ licensed for stake, expected another redeem; the user deposited USDC into a Navi
 The board logged "revoked: wrong call (category, target, coin) while licensed" and stake went
 back to shadowing. Nothing staged. Totals after 10 live calls: 90 memories, 32 correct (36%).
 
-<img src="docs/img/card-stake.png" alt="The stake / unstake card: LICENSED, 80% (8/10) over the last 10 memories" width="320">
+<img src="docs/img/card-stake.png" alt="The stake / unstake card: 80% (8/10) over the last 10 memories, back to SHADOWING on probation after a real revoke" width="320">
 
 Every card, the curve, the licence events and the memory timeline are rebuilt from Walrus Memory
 recall. Each memory links to its transaction on Suiscan and its blob on Walruscan:
