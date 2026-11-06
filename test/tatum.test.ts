@@ -208,4 +208,65 @@ describe('TatumSuiClient', () => {
     assert.equal(await tatum.getCoinMetadata('0x9::x::X'), null);
     assert.equal(requests.length, 2);
   });
+
+  it('re-asks a page below the gateway window from the checkpoint the error names', async () => {
+    const outOfRange = {
+      status: 200,
+      body: {
+        data: { transactions: null },
+        errors: [
+          {
+            message: 'Failed to list transactions',
+            extensions: {
+              chain: ['ListTransactions: stream error OutOfRange: requested data below earliest available; lowest available checkpoint is 237661232'],
+            },
+          },
+        ],
+      },
+    };
+    const page = { pageInfo, nodes: [{ digest: 'tx1' }] };
+    const { tatum, requests } = client([outOfRange, ok({ transactions: page })]);
+    const result = await tatum.queryTransactionBlocks({ ToAddress: '0xabc' }, null, 2, { noCache: true, digestsOnly: true });
+    assert.deepEqual(result.data, [{ digest: 'tx1' }]);
+    assert.deepEqual(requests[0]?.body.variables, { filter: { affectedAddress: '0xabc' }, first: 2 });
+    assert.deepEqual(requests[1]?.body.variables, { filter: { affectedAddress: '0xabc', afterCheckpoint: 237661232 }, first: 2 });
+  });
+
+  it('starts every later page at the floor it learnt in the same process', async () => {
+    const outOfRange = {
+      status: 200,
+      body: {
+        data: null,
+        errors: [
+          {
+            message: 'Failed to list events',
+            extensions: { chain: ['ListEvents: stream error OutOfRange: lowest available checkpoint is 237661232'] },
+          },
+        ],
+      },
+    };
+    const events = { pageInfo: { ...pageInfo, hasNextPage: true, endCursor: 'next' }, nodes: [] };
+    const { tatum, requests } = client([outOfRange, ok({ events }), ok({ events })]);
+    await tatum.queryEvents({ MoveEventType: '0xdex::pool::SwapEvent' }, null, 50, { noCache: true });
+    await tatum.queryEvents({ MoveEventType: '0xdex::pool::SwapEvent' }, 'next', 50, { noCache: true });
+    assert.deepEqual(requests[1]?.body.variables, { filter: { type: '0xdex::pool::SwapEvent', afterCheckpoint: 237661232 }, first: 50 });
+    assert.deepEqual(requests[2]?.body.variables, { filter: { type: '0xdex::pool::SwapEvent', afterCheckpoint: 237661232 }, first: 50, after: 'next' });
+  });
+
+  it('surfaces the gateway detail on errors that name no window', async () => {
+    const broken = {
+      status: 200,
+      body: {
+        data: null,
+        errors: [{ message: 'Failed to list transactions', extensions: { chain: ['ListTransactions: stream error Unavailable'] } }],
+      },
+    };
+    const { tatum, requests } = client([broken]);
+    await assert.rejects(tatum.queryTransactionBlocks({ FromAddress: '0xabc' }, null, 2), (error: Error) => {
+      assert.ok(error instanceof RpcError);
+      assert.equal(error.message, 'transactions: Failed to list transactions (ListTransactions: stream error Unavailable)');
+      return true;
+    });
+    assert.equal(requests.length, 1);
+  });
 });

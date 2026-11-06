@@ -131,6 +131,28 @@ export class RpcError extends Error {
   }
 }
 
+/**
+ * Tatum's Sui gateway keeps only a recent window of checkpoints. A filter whose scan would
+ * start below that window is answered with `OutOfRange`, naming the lowest checkpoint the
+ * service still holds; the client re-asks that page from the named floor. The window slides
+ * forward over time, so the floor is learnt per process instead of being hard-coded.
+ */
+export class OutOfRangeError extends RpcError {
+  readonly floor: number;
+
+  constructor(message: string, floor: number) {
+    super(message, GRAPHQL_ERROR_CODE);
+    this.name = 'OutOfRangeError';
+    this.floor = floor;
+  }
+}
+
+/** `... lowest available checkpoint is 237661232` -> `237661232`. */
+export function lowestCheckpoint(text: string): number | undefined {
+  const match = /lowest available checkpoint is (\d+)/i.exec(text);
+  return match ? Number(match[1]) : undefined;
+}
+
 export interface TatumClientOptions {
   /** Tatum's Sui GraphQL endpoint; `/graphql` is appended to a bare gateway URL. */
   url: string;
@@ -195,6 +217,8 @@ export function graphqlUrl(url: string): string {
  */
 export class TatumSuiClient {
   readonly stats: UsageStats = { networkCalls: 0, cacheHits: 0, retries: 0 };
+  /** Lowest checkpoint the gateway still serves, once an OutOfRange reply has named it. */
+  private checkpointFloor: number | undefined;
   private readonly url: string;
   private readonly apiKey: string;
   private readonly cache: DiskCache | undefined;
@@ -227,6 +251,31 @@ export class TatumSuiClient {
     variables: Record<string, unknown>,
     map: (data: D) => R,
     options: CallOptions = {},
+  ): Promise<R> {
+    try {
+      return await this.queryPage<D, R>(name, query, this.withFloor(variables, this.checkpointFloor), map, options);
+    } catch (error) {
+      // A filter that scans below the gateway's retained window: learn the floor it reports
+      // and ask the same page again from there. Later calls in this process start at the floor.
+      if (!(error instanceof OutOfRangeError) || this.checkpointFloor !== undefined) throw error;
+      this.checkpointFloor = error.floor;
+      return this.queryPage<D, R>(name, query, this.withFloor(variables, error.floor), map, options);
+    }
+  }
+
+  /** Adds `afterCheckpoint` to the page's filter, so the service never scans pruned checkpoints. */
+  private withFloor(variables: Record<string, unknown>, floor: number | undefined): Record<string, unknown> {
+    const filter = variables.filter;
+    if (floor === undefined || typeof filter !== 'object' || filter === null || Array.isArray(filter)) return variables;
+    return { ...variables, filter: { ...filter, afterCheckpoint: floor } };
+  }
+
+  private async queryPage<D, R>(
+    name: string,
+    query: string,
+    variables: Record<string, unknown>,
+    map: (data: D) => R,
+    options: CallOptions,
   ): Promise<R> {
     const key = DiskCache.keyOf(`${CACHE_PREFIX}${name}`, { query, variables });
     if (this.cache && !options.noCache) {
@@ -382,11 +431,23 @@ export class TatumSuiClient {
         throw new RpcError(`${name}: HTTP ${response.status}`, response.status);
       }
 
-      const payload = (await response.json()) as { data?: D | null; errors?: Array<{ message?: string }> };
+      const payload = (await response.json()) as {
+        data?: D | null;
+        errors?: Array<{ message?: string; extensions?: { chain?: unknown } }>;
+      };
       // Partial data next to errors is not trusted: it would be cached as if complete.
       if (payload.errors?.length) {
         const messages = payload.errors.map((error) => error.message ?? 'unknown error').slice(0, 3).join('; ');
-        throw new RpcError(`${name}: ${messages}`, GRAPHQL_ERROR_CODE);
+        // The gateway explains an unservable page in `extensions.chain`; keeping that detail
+        // makes the failure in a log actionable instead of a bare "Failed to list transactions".
+        const chain = payload.errors
+          .map((error) => (Array.isArray(error.extensions?.chain) ? error.extensions.chain.join('; ') : ''))
+          .filter(Boolean)
+          .join('; ');
+        const detail = chain ? `${messages} (${chain})` : messages;
+        const floor = lowestCheckpoint(chain);
+        if (floor !== undefined) throw new OutOfRangeError(`${name}: ${detail}`, floor);
+        throw new RpcError(`${name}: ${detail}`, GRAPHQL_ERROR_CODE);
       }
       if (payload.data === undefined || payload.data === null) throw new RpcError(`${name}: empty response`, GRAPHQL_ERROR_CODE);
       return payload.data;
