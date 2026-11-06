@@ -1,6 +1,8 @@
 // Licence Board front end: plain DOM, no dependencies. All text goes through textContent.
 
 const STATE_NAME = { LOCKED: 'Locked', SHADOWING: 'Shadowing', LICENSED: 'Licensed' };
+/** Transition labels read as a state change at a glance: `LICENSED → SHADOWING`. */
+const STATE_CODE = { LOCKED: 'LOCKED', SHADOWING: 'SHADOWING', LICENSED: 'LICENSED' };
 const LICENCE_THRESHOLD = 0.8;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -63,7 +65,15 @@ function renderCards(view) {
         { class: 'dots', role: 'img', 'aria-label': `last ${card.recent.length}: ${card.recent.filter(Boolean).length} correct` },
         card.recent.map((hit) => h('span', { class: `dot ${hit ? 'hit' : 'miss'}`, title: hit ? 'correct' : 'wrong' })),
       );
-      const bar = h('div', { class: 'bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(card.progress * 100)) });
+      const bar = h('div', {
+        class: 'bar',
+        role: 'progressbar',
+        'aria-label': `Progress to a licence in ${card.label}`,
+        'aria-valuemin': '0',
+        'aria-valuemax': '100',
+        'aria-valuenow': String(Math.round(card.progress * 100)),
+        'aria-valuetext': card.onProbation ? `On probation: ${card.needed}` : card.needed,
+      });
       bar.append(h('span', { style: `width:${Math.round(card.progress * 100)}%` }));
       return h(
         'article',
@@ -174,7 +184,16 @@ function renderEvents(view) {
   const events = [...view.events].reverse();
   $('events').replaceChildren(
     ...(events.length
-      ? events.map((e) => h('li', {}, h('time', {}, when(e.timestampMs)), h('strong', {}, e.category), h('span', {}, `${STATE_NAME[e.from]} to ${STATE_NAME[e.to]}`), h('span', { class: 'reason' }, e.reason)))
+      ? events.map((e) =>
+          h(
+            'li',
+            {},
+            h('time', {}, when(e.timestampMs)),
+            h('strong', {}, e.category),
+            h('span', { class: 'move', title: `${STATE_NAME[e.from]} to ${STATE_NAME[e.to]}` }, `${STATE_CODE[e.from]} → ${STATE_CODE[e.to]}`),
+            h('span', { class: 'reason' }, e.reason),
+          ),
+        )
       : [h('li', {}, 'No licence changes yet.')]),
   );
 }

@@ -265,6 +265,7 @@ h2 {
 .dots {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .dot {
@@ -393,6 +394,14 @@ h2 {
   color: var(--muted);
 }
 
+/* State changes read as codes so `LICENSED → SHADOWING` scans faster than prose. */
+.events .move {
+  color: var(--ink-2);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
 .events time,
 .memory time {
   color: var(--muted);
@@ -468,4 +477,29 @@ button.more {
   color: var(--muted);
   font-size: 0.8rem;
   border-top: 1px solid var(--grid);
+}
+
+/* Phones: the licence dots and the rule list are the only things that get cramped. */
+@media (max-width: 560px) {
+  .rules {
+    font-size: 0.95rem;
+  }
+
+  .dots {
+    gap: 5px;
+  }
+
+  .dot {
+    width: 16px;
+    height: 16px;
+  }
+
+  .memory .pair {
+    grid-template-columns: 1fr;
+    gap: 0.05rem;
+  }
+
+  .memory .pair dt {
+    margin-top: 0.35rem;
+  }
 }
