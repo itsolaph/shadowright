@@ -7,11 +7,11 @@ or the agent can do anything with every coin from day one. Shadowright makes the
 autonomy instead, one decision category at a time (swaps, sends, staking, claims, ...).
 
 **In 30 seconds.** Before each of your on-chain decisions on Sui, the agent privately predicts
-what you will do. It then reads what you actually did through **Tatum**'s Sui RPC, and stores the
-episode (context, prediction, truth, verdict and a lesson) in **Walrus Memory**. Before the next
-decision it recalls those memories, and they are all it knows about you. Accuracy recalled from
-Walrus decides, per category, whether the agent holds a licence. A licensed agent may act alone,
-but only after a dry run, and it never signs. One wrong call revokes the licence.
+what you will do. It then reads what you actually did through **Tatum**'s Sui GraphQL RPC, and
+stores the episode (context, prediction, truth, verdict and a lesson) in **Walrus Memory**.
+Before the next decision it recalls those memories, and they are all it knows about you. Accuracy
+recalled from Walrus decides, per category, whether the agent holds a licence. A licensed agent
+may act alone, but only after a dry run, and it never signs. One wrong call revokes the licence.
 
 ![Licence Board: per-category licences rebuilt from Walrus Memory recall](docs/img/board-overview.png)
 
@@ -25,7 +25,7 @@ but only after a dry run, and it never signs. One wrong call revokes the licence
 ```mermaid
 flowchart LR
     R["Recall<br/>similar + recent memories<br/>(Walrus Memory)"] --> P["Predict<br/>the next action<br/>(habit-v2)"]
-    P --> O["Observe<br/>what the user did<br/>(Tatum Sui RPC)"]
+    P --> O["Observe<br/>what the user did<br/>(Tatum Sui GraphQL)"]
     O --> M["Remember<br/>prediction, truth, lesson<br/>(Walrus Memory)"]
     M --> L["Licence<br/>per category<br/>LOCKED / SHADOWING / LICENSED"]
     L --> R
@@ -163,15 +163,20 @@ eyes. Queries used:
 
 `src/graphql.ts` maps the results into the response shapes the code used with JSON-RPC (Tatum
 retired Sui JSON-RPC), so classification is unchanged: in a fresh page of 50 demo-wallet
-transactions, all 40 that were also cached from JSON-RPC classified identically. Filtered
-queries (`sentAddress`, `affectedAddress`, event `type`) reach back about 90 days; transactions
-by digest are available further back.
+transactions, all 40 that were also cached from JSON-RPC classified identically. Filtered queries
+(`sentAddress`, `affectedAddress`, event `type`) only reach back as far as the gateway's retained
+checkpoint window — at the time of writing, to 23 January 2026, and it slides forward. A page
+that would start below that window comes back as a GraphQL `OutOfRange` error naming the lowest
+checkpoint still served; the client reads that floor out of the error, re-asks the same page with
+`afterCheckpoint`, and keeps it for the rest of the run, so live mode keeps working while the
+window moves under it. Transactions fetched by digest (`multiGetTransactions`) reach further back
+than filtered lists.
 
 **Credit budget.** Each call costs 2 credits (Tatum documents no separate price for GraphQL). The client (`src/tatum.ts`) is throttled to 2.5
 requests/s with a token bucket (the free plan allows 3), retries 429/5xx and stalled requests with
 exponential backoff, caches every stable response on disk (re-runs cost nothing), and keeps a
 running credit total in `data/tatum-usage.json`, even when a run is interrupted. All runs so far
-used about 4,530 credits of 100,000: scouting ~3,990, backfills ~450, live mode 2 per poll.
+used about 4,700 credits of 100,000: scouting ~3,990, backfills ~450, live mode 2 per poll.
 
 ## How Shadowright uses Walrus Memory
 
@@ -260,7 +265,7 @@ be dropped in without touching the loop or the licence rules.
 | [`typescript`](https://github.com/microsoft/TypeScript) | Type checking (dev) | Apache-2.0 |
 | [`@types/node`](https://github.com/DefinitelyTyped/DefinitelyTyped) | Node.js type definitions (dev) | MIT |
 
-Data and infrastructure: [Tatum](https://tatum.io) Sui RPC gateway, [Walrus](https://walrus.xyz)
+Data and infrastructure: [Tatum](https://tatum.io) Sui GraphQL gateway, [Walrus](https://walrus.xyz)
 and Walrus Memory, [Sui](https://sui.io) mainnet. Links from the board: [Suiscan](https://suiscan.xyz)
 and [Walruscan](https://walruscan.com).
 
